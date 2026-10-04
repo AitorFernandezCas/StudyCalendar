@@ -1,46 +1,45 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Architecture & Project Structure
 
-This repository contains a Vite-powered React and TypeScript study calendar.
+StudyCalendar is a Vite + React + TypeScript frontend backed by a Flask API and Supabase.
 
-- `src/App.tsx` contains the main application UI, task state, calendar behavior, and modal form.
-- `src/main.tsx` is the browser entry point.
-- `src/styles.css` contains the application-wide layout, responsive styles, and component styling.
-- `index.html` defines the Vite HTML shell and document metadata.
-- `vite.config.ts` and `tsconfig*.json` contain build and TypeScript configuration.
-- `dist/` is generated build output and must not be edited manually.
-- `node_modules/` contains installed dependencies and is not committed.
+- `src/App.tsx` contains the calendar, week/month views, all-tasks and projects views, drag-and-drop for ordinary tasks, modal forms, and routine restrictions.
+- `src/lib/navigation.ts` maps the calendar, all-tasks, and projects screens to `/`, `/tareas`, and `/proyectos`, and keeps browser history navigation in sync.
+- `src/lib/api.ts` is the typed client for Flask endpoints; `src/lib/supabase.ts` handles Supabase Auth and persistent sessions.
+- `src/styles.css` contains the shared responsive UI styles.
+- `backend/app.py` provides the Flask app factory, bearer-token validation, CORS, task/category/project/routine endpoints, and occurrence generation. `backend/wsgi.py` is the production entry point.
+- `backend/test_app.py` contains Flask tests.
+- `supabase/migrations/` contains versioned SQL migrations for the quoted `Task` schema. `dist/` and `node_modules/` are generated and must not be edited or committed.
 
-Backend tests live in `backend/test_app.py`; frontend tests, if added, should live next to the related module or under `src/__tests__/`.
+## Data Model & Behavior
 
-## Build, Test, and Development Commands
+All application tables live in schema `"Task"`: `tasks`, `category`, `projects`, `routine`, `routine_period`, and `routine_completion`. Tasks use `category_id`, `project_id`, and `task_type` (`daily`, `project`, or `routine`). Categories and projects are user-owned; deleting a category clears `category_id`, while deleting a project clears `project_id` and leaves its tasks available as unassigned project tasks.
 
-Run commands from the repository root:
+Projects have a name and color, are unique by case-insensitive name per user, and are managed through the authenticated `/api/projects` CRUD endpoints. Project-task associations are validated against the authenticated user's projects. Preserve row-level security and user ownership when changing the project schema or API.
 
-- `npm install` installs dependencies from `package-lock.json`.
-- `npm run dev` starts the local Vite development server with hot reload.
-- `npm run build` runs TypeScript project checks and creates a production build in `dist/`.
-- `npm run preview` serves the production build locally for a final manual check.
-- `python -m venv backend/.venv` creates the backend virtual environment.
-- `pip install -r backend/requirements.txt` installs Flask, Supabase, Gunicorn, and test dependencies.
-- `python backend/app.py` starts the Flask API on `http://localhost:5000`.
-- `pytest backend/test_app.py` runs the backend smoke tests.
+The frontend uses `/` for the calendar, `/tareas` for “Todas las tareas”, and `/proyectos` for the dedicated projects view. Keep the URL and selected screen synchronized with browser back/forward navigation. “Proyectos” groups project tasks by associated project, including historical and completed tasks; tasks without an association appear under “Sin proyecto”. Project progress uses all associated tasks. “Todas las tareas” shows pending daily and project tasks, including those with past dates, and hides completed daily and project tasks. The calendar continues to show completed tasks. Routine activation is independent of task completion; preserve the routine occurrence rules below.
 
-No frontend test runner or lint script is configured yet. Verify UI changes manually in the browser, run `pytest backend/test_app.py -q`, and always run `npm run build` before submitting work.
+Routines have no category. They repeat daily through active periods; completions are stored per routine and date. Calendar occurrences are read-only except for complete/uncomplete. Routine definitions are edited, activated/deactivated, or deleted only from “Todas las tareas”. Inactive routines may show historical dates only; they must never generate today or future occurrences.
 
-## Coding Style & Naming Conventions
+## Development Commands
 
-Use 2-space indentation and single quotes in TypeScript. Prefer functional React components, hooks, and strongly typed data structures. Use `PascalCase` for components and types, `camelCase` for variables and functions, and descriptive kebab-case only for file names when appropriate. Keep user-facing text in Spanish to match the existing interface. Reuse existing CSS class naming patterns and keep responsive behavior intact.
+From the repository root:
 
-## Testing Guidelines
+- `npm install` installs frontend dependencies.
+- `npm run dev` starts Vite, normally on `http://localhost:5173`.
+- `npm run build` runs TypeScript checks and creates `dist/`.
+- `npm run preview` serves the production build locally.
+- `python -m venv backend/.venv` and `pip install -r backend/requirements.txt` prepare the Flask environment.
+- `python backend/app.py` starts the API on `http://localhost:5000`.
+- `pytest backend/test_app.py -q` runs authentication and routine occurrence tests.
 
-There is no frontend testing framework or coverage requirement at present. For changes affecting task/category creation, editing, dragging, completion, deletion, persistence, or filtering, manually verify the full interaction in the browser and confirm that a page reload preserves data through the Flask API and Supabase.
+## Style, Testing & Security
 
-## Commit & Pull Request Guidelines
+Use two-space indentation, single quotes in TypeScript, functional React components, `PascalCase` for components/types, and `camelCase` for functions/variables. Keep UI copy in Spanish. There is no frontend test runner; manually verify calendar navigation, CRUD, dragging, completion, routine activation, and reload persistence, then run both build and pytest.
 
-The repository has no commit history yet, so no established commit convention exists. Use short imperative messages, for example `Add task completion state` or `Fix calendar drag behavior`. Pull requests should explain the user-visible change, list verification commands, mention any persistence or data-shape changes, and include screenshots or a short recording for visual or interaction changes.
+Use `.env.example` and `backend/.env.example` as templates. Never expose Supabase service-role/secret keys in the frontend or commit real `.env` files. Supabase tables use RLS and user ownership; preserve those policies in every migration.
 
-## Security & Configuration Tips
+## Commits & Pull Requests
 
-Task and category data is stored in Supabase; do not add secrets, service-role keys, or credentials to source files. Keep generated files and local configuration out of commits according to `.gitignore`.
+Use short imperative commit messages such as `Fix inactive routine occurrences`. Pull requests should describe user-visible behavior, API/schema changes, migrations, verification commands, and screenshots for UI changes.
