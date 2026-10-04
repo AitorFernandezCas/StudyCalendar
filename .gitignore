@@ -2,3 +2,9 @@ node_modules/
 dist/
 .DS_Store
 *.local
+.env
+.env.*
+!.env.example
+backend/.venv/
+__pycache__/
+.pytest_cache/
