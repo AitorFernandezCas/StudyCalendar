@@ -12,7 +12,7 @@ This repository contains a Vite-powered React and TypeScript study calendar.
 - `dist/` is generated build output and must not be edited manually.
 - `node_modules/` contains installed dependencies and is not committed.
 
-There is currently no dedicated test directory. If tests are added, place them next to the related module or under `src/__tests__/`.
+Backend tests live in `backend/test_app.py`; frontend tests, if added, should live next to the related module or under `src/__tests__/`.
 
 ## Build, Test, and Development Commands
 
@@ -22,8 +22,12 @@ Run commands from the repository root:
 - `npm run dev` starts the local Vite development server with hot reload.
 - `npm run build` runs TypeScript project checks and creates a production build in `dist/`.
 - `npm run preview` serves the production build locally for a final manual check.
+- `python -m venv backend/.venv` creates the backend virtual environment.
+- `pip install -r backend/requirements.txt` installs Flask, Supabase, Gunicorn, and test dependencies.
+- `python backend/app.py` starts the Flask API on `http://localhost:5000`.
+- `pytest backend/test_app.py` runs the backend smoke tests.
 
-No test runner or lint script is configured yet. Verify UI changes manually in the browser and always run `npm run build` before submitting work.
+No frontend test runner or lint script is configured yet. Verify UI changes manually in the browser, run `pytest backend/test_app.py -q`, and always run `npm run build` before submitting work.
 
 ## Coding Style & Naming Conventions
 
@@ -31,7 +35,7 @@ Use 2-space indentation and single quotes in TypeScript. Prefer functional React
 
 ## Testing Guidelines
 
-There is no automated testing framework or coverage requirement at present. For changes affecting task creation, editing, dragging, completion, persistence, or filtering, manually verify the full interaction in the browser and confirm that a page reload preserves tasks through `localStorage`.
+There is no frontend testing framework or coverage requirement at present. For changes affecting task/category creation, editing, dragging, completion, deletion, persistence, or filtering, manually verify the full interaction in the browser and confirm that a page reload preserves data through the Flask API and Supabase.
 
 ## Commit & Pull Request Guidelines
 
@@ -39,4 +43,4 @@ The repository has no commit history yet, so no established commit convention ex
 
 ## Security & Configuration Tips
 
-Task data is stored locally in the browser; do not add secrets or credentials to source files. Keep generated files and local configuration out of commits according to `.gitignore`.
+Task and category data is stored in Supabase; do not add secrets, service-role keys, or credentials to source files. Keep generated files and local configuration out of commits according to `.gitignore`.
