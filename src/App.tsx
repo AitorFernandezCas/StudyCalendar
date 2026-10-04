@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { categoriesApi, tasksApi, type ApiCategory, type ApiTask } from './lib/api'
+import { bootstrapApi, calendarApi, categoriesApi, routinesApi, tasksApi, type ApiCategory, type ApiRoutine, type ApiRoutineOccurrence, type ApiTask } from './lib/api'
 import { supabase } from './lib/supabase'
 
 type Category = ApiCategory
-type Task = { id: string; title: string; categoryId: string | null; date: string; time: string; endTime: string; color: string; done: boolean }
+type TaskType = 'routine' | 'project' | 'daily'
+type Task = { id: string; title: string; categoryId: string | null; taskType: TaskType; routineId?: string; date: string; time: string; endTime: string; color: string; done: boolean }
 const colors = ['#7c5cff', '#ee7b6f', '#f2b84b', '#3fba91', '#4f8ff7']
+const taskTypeLabels: Record<TaskType, string> = { routine: 'Rutina', project: 'Proyectos', daily: 'Tareas del día' }
 const hours = Array.from({ length: 14 }, (_, i) => i + 8)
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (d: Date) => String(d.getFullYear()) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+const startOfWeek = (value: Date) => { const day = new Date(value); const offset = (day.getDay() + 6) % 7; day.setDate(day.getDate() - offset); day.setHours(0, 0, 0, 0); return day }
 const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute }
-const fromApi = (task: ApiTask): Task => ({ id: task.id, title: task.title, categoryId: task.category_id, date: task.date, time: task.start_time.slice(0, 5), endTime: task.end_time.slice(0, 5), color: task.color, done: task.completed })
-const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, date: task.date, start_time: task.time, end_time: task.endTime, color: task.color, completed: task.done })
+const fromApi = (task: ApiTask | ApiRoutineOccurrence): Task => ({ id: task.id, title: task.title, categoryId: task.category_id, taskType: task.task_type, routineId: 'routine_id' in task ? task.routine_id : undefined, date: task.date, time: task.start_time.slice(0, 5), endTime: task.end_time.slice(0, 5), color: task.color, done: task.completed })
+const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, task_type: task.taskType, date: task.date, start_time: task.time, end_time: task.endTime, color: task.color, completed: task.done })
 
 function AuthPanel() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
@@ -29,48 +32,215 @@ function TimePicker({ label, value, onChange }: { label: string; value: string; 
   return <div className="time-picker-field"><span className="time-picker-label">{label}</span><button type="button" className={'time-picker-trigger ' + (open ? 'open' : '')} onClick={() => setOpen(current => !current)}><span className="time-picker-icon">◷</span>{value}</button>{open && <div className="time-picker-menu" role="listbox" aria-label={label}>{options.map(option => <button type="button" role="option" aria-selected={option === value} className={option === value ? 'selected' : ''} key={option} onClick={() => { onChange(option); setOpen(false) }}>{option}</button>)}</div>}</div>
 }
 
-function TaskCard({ task, categoryName, onEdit, onToggle, onDelete }: { task: Task; categoryName: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void }) {
-  return <article draggable onDragStart={e => e.dataTransfer.setData('task', task.id)} onClick={e => { e.stopPropagation(); onEdit(task) }} className={'task-card ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}><div className="task-time">{task.time} — {task.endTime}</div><div className="task-title">{task.title}</div><div className="task-meta"><span>{categoryName}</span><div className="task-actions"><button aria-label={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} onClick={e => { e.stopPropagation(); onToggle(task.id) }}>{task.done ? '✓' : '○'}</button><button className="delete-task" aria-label="Borrar tarea" onClick={e => { e.stopPropagation(); onDelete(task.id) }}>×</button></div></div></article>
+function TaskCard({ task, categoryName, onEdit, onToggle, onDelete, locked = false }: { task: Task; categoryName: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; locked?: boolean }) {
+  return <article draggable={!locked} onDragStart={e => { if (!locked) e.dataTransfer.setData('task', task.id) }} onClick={e => { e.stopPropagation(); if (!locked) onEdit(task) }} className={'task-card ' + (task.done ? 'done' : '') + (locked ? ' routine-task' : '')} style={{ '--task-color': task.color } as React.CSSProperties}><div className="task-time">{task.time} — {task.endTime}</div><div className="task-title">{task.title}</div><div className="task-meta">{!locked && <span>{categoryName}</span>}<div className="task-actions"><button aria-label={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} onClick={e => { e.stopPropagation(); onToggle(task.id) }}>{task.done ? '✓' : '○'}</button>{!locked && <button className="delete-task" aria-label="Borrar tarea" onClick={e => { e.stopPropagation(); onDelete(task.id) }}>×</button>}</div></div></article>
+}
+
+function OverviewTask({ task, categoryName, onEdit, onToggle, onDelete, onEditRoutine, onToggleRoutine, onDeleteRoutine, routine }: { task: Task; categoryName: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; onEditRoutine?: () => void; onToggleRoutine?: () => void; onDeleteRoutine?: () => void; routine?: ApiRoutine }) {
+  const isRoutine = Boolean(routine)
+  return <article className={'overview-task ' + (task.done ? 'done' : '') + (isRoutine && !routine?.active ? ' inactive' : '')} style={{ '--task-color': task.color } as React.CSSProperties} onClick={() => isRoutine ? onEditRoutine?.() : onEdit(task)}><div className="overview-task-main"><strong>{task.title}</strong><small>{isRoutine ? task.time + ' — ' + task.endTime : task.date + ' · ' + task.time + ' — ' + task.endTime}</small></div>{!isRoutine && <span className="overview-category">{categoryName}</span>}<div className="task-actions">{isRoutine ? <><button aria-label={routine?.active ? 'Desactivar rutina' : 'Activar rutina'} onClick={e => { e.stopPropagation(); onToggleRoutine?.() }}>{routine?.active ? '●' : '○'}</button><button className="delete-task" aria-label="Borrar rutina" onClick={e => { e.stopPropagation(); onDeleteRoutine?.() }}>×</button></> : <><button aria-label={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} onClick={e => { e.stopPropagation(); onToggle(task.id) }}>{task.done ? '✓' : '○'}</button><button className="delete-task" aria-label="Borrar tarea" onClick={e => { e.stopPropagation(); onDelete(task.id) }}>×</button></>}</div></article>
+}
+
+function TaskOverview({ tasks, routines, categoryName, onEdit, onToggle, onDelete, onEditRoutine, onToggleRoutine, onDeleteRoutine }: { tasks: Task[]; routines: ApiRoutine[]; categoryName: (id: string | null) => string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; onEditRoutine: (routine: ApiRoutine) => void; onToggleRoutine: (routine: ApiRoutine) => void; onDeleteRoutine: (routine: ApiRoutine) => void }) {
+  const groups: TaskType[] = ['routine', 'project', 'daily']
+  const routineById = useMemo(() => new Map(routines.map(routine => [routine.id, routine])), [routines])
+  const routineTasks = useMemo(() => routines.map(routine => ({ id: 'routine:' + routine.id, title: routine.title, categoryId: null, taskType: 'routine' as TaskType, routineId: routine.id, date: '', time: routine.start_time.slice(0, 5), endTime: routine.end_time.slice(0, 5), color: routine.color, done: false })), [routines])
+  const groupedTasks = useMemo(() => ({ routine: routineTasks, project: tasks.filter(task => task.taskType === 'project').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), daily: tasks.filter(task => task.taskType === 'daily').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)) }), [routineTasks, tasks])
+  return <section className="task-overview"><div className="overview-intro"><p className="eyebrow">RESUMEN DE TAREAS</p><h2>Todas las tareas</h2><p>Consulta y organiza todo tu trabajo desde un único lugar.</p></div><div className="overview-sections">{groups.map(type => { const grouped = type === 'routine' ? routineTasks : tasks.filter(task => task.taskType === type).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)); return <section className={'overview-section ' + type} key={type}><div className="overview-section-head"><h3>{taskTypeLabels[type]}</h3><span>{grouped.length}</span></div>{grouped.length ? <div className="overview-list">{grouped.map(task => { const routine = routines.find(item => item.id === task.routineId); return <OverviewTask key={task.id} task={task} categoryName={categoryName(task.categoryId)} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} routine={routine} onEditRoutine={routine ? () => onEditRoutine(routine) : undefined} onToggleRoutine={routine ? () => onToggleRoutine(routine) : undefined} onDeleteRoutine={routine ? () => onDeleteRoutine(routine) : undefined} /> })}</div> : <p className="overview-empty">No hay tareas en esta sección.</p>}</section>})}</div></section>
+  return <section className="task-overview"><div className="overview-intro"><p className="eyebrow">RESUMEN DE TAREAS</p><h2>Todas las tareas</h2><p>Consulta y organiza todo tu trabajo desde un único lugar.</p></div><div className="overview-sections">{groups.map(type => { const grouped = groupedTasks[type]; return <section className={'overview-section ' + type} key={type}><div className="overview-section-head"><h3>{taskTypeLabels[type]}</h3><span>{grouped.length}</span></div>{grouped.length ? <div className="overview-list">{grouped.map(task => { const routine = task.routineId ? routineById.get(task.routineId) : undefined; return <OverviewTask key={task.id} task={task} categoryName={categoryName(task.categoryId)} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} routine={routine} onEditRoutine={routine ? () => onEditRoutine(routine) : undefined} onToggleRoutine={routine ? () => onToggleRoutine(routine) : undefined} onDeleteRoutine={routine ? () => onDeleteRoutine(routine) : undefined} /> })}</div> : <p className="overview-empty">No hay tareas en esta sección.</p>}</section>})}</div></section>
 }
 
 function CalendarApp({ session }: { session: Session }) {
-  const [weekStart, setWeekStart] = useState(new Date(2025, 9, 6))
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [tasks, setTasks] = useState<Task[]>([])
+  const [overviewTasks, setOverviewTasks] = useState<Task[]>([])
+  const [overviewLoaded, setOverviewLoaded] = useState(false)
+  const [overviewLoading, setOverviewLoading] = useState(false)
+  const [routines, setRoutines] = useState<ApiRoutine[]>([])
+  const [routineOccurrences, setRoutineOccurrences] = useState<Task[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const [selectedRoutine, setSelectedRoutine] = useState<string | null>(null)
   const [isModal, setIsModal] = useState(false)
   const [categoryModal, setCategoryModal] = useState(false)
   const [categorySelected, setCategorySelected] = useState<string | null>(null)
   const [filter, setFilter] = useState('Todas')
   const [view, setView] = useState<'week' | 'month'>('week')
+  const [screen, setScreen] = useState<'calendar' | 'overview'>('calendar')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [busyAction, setBusyAction] = useState<string | null>(null)
+  const [routineActive, setRoutineActive] = useState(true)
   const [categoryDraft, setCategoryDraft] = useState({ name: '', color: colors[0] })
-  const [draft, setDraft] = useState<Omit<Task, 'id'>>({ title: '', categoryId: null, date: iso(new Date()), time: '09:00', endTime: '10:00', color: colors[0], done: false })
-  const reload = async () => { setLoading(true); try { const [taskData, categoryData] = await Promise.all([tasksApi.list(session), categoriesApi.list(session)]); setTasks(taskData.map(fromApi)); setCategories(categoryData); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudieron cargar los datos') } finally { setLoading(false) } }
-  useEffect(() => { void reload() }, [session.access_token])
+  const [draft, setDraft] = useState<Omit<Task, 'id'>>({ title: '', categoryId: null, taskType: 'daily', date: iso(new Date()), time: '09:00', endTime: '10:00', color: colors[0], done: false })
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d }), [weekStart])
+  const today = iso(new Date())
   const weekLabel = weekStart.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' }) + ' — ' + days[6].toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' })
   const monthStart = useMemo(() => new Date(weekStart.getFullYear(), weekStart.getMonth(), 1), [weekStart])
   const monthDays = useMemo(() => { const first = new Date(monthStart); const offset = (first.getDay() + 6) % 7; first.setDate(first.getDate() - offset); return Array.from({ length: 42 }, (_, index) => { const day = new Date(first); day.setDate(first.getDate() + index); return day }) }, [monthStart])
   const monthLabel = monthStart.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
-  const categoryName = (id: string | null) => categories.find(category => category.id === id)?.name || 'Sin categoría'
-  const visible = (date: string) => tasks.filter(t => t.date === date && (filter === 'Todas' || (filter === 'Sin categoría' ? t.categoryId === null : t.categoryId === filter))).sort((a, b) => a.time.localeCompare(b.time))
-  const completed = tasks.filter(t => t.done).length
-  const openNew = (date = iso(weekStart), time = '09:00') => { setSelected(null); setDraft({ title: '', categoryId: categories[0]?.id || null, date, time, endTime: pad(Number(time.slice(0, 2)) + 1) + ':' + time.slice(3), color: categories[0]?.color || colors[0], done: false }); setIsModal(true) }
-  const edit = (task: Task) => { setSelected(task.id); setDraft({ title: task.title, categoryId: task.categoryId, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done }); setIsModal(true) }
-  const save = async () => { if (!draft.title.trim()) return; if (toMinutes(draft.endTime) <= toMinutes(draft.time)) { setError('La hora de finalización debe ser posterior a la de inicio'); return } try { if (selected) { const updated = fromApi(await tasksApi.update(session, selected, toApi(draft))); setTasks(prev => prev.map(t => t.id === selected ? updated : t)) } else { const created = fromApi(await tasksApi.create(session, toApi(draft))); setTasks(prev => [...prev, created]) } setIsModal(false); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la tarea') } }
+  const visibleRange = useMemo(() => { const range = view === 'month' ? monthDays : days; return { from: iso(range[0]), to: iso(range[range.length - 1]) } }, [days, monthDays, view])
+  const rangeKey = visibleRange.from + ':' + visibleRange.to
+  const loadedRangeRef = useRef<string | null>(null)
+  const bootstrapRangeRef = useRef<string | null>(null)
+  const updateTaskState = (updater: (current: Task[]) => Task[]) => { setTasks(updater); if (overviewLoaded) setOverviewTasks(updater) }
+  useEffect(() => {
+    const controller = new AbortController()
+    bootstrapRangeRef.current = rangeKey
+    setLoading(true)
+    setOverviewLoaded(false)
+    setOverviewTasks([])
+    void bootstrapApi.load(session, visibleRange.from, visibleRange.to, controller.signal).then(data => {
+      if (controller.signal.aborted) return
+      setTasks(data.tasks.map(fromApi))
+      setRoutineOccurrences(data.routine_occurrences.map(fromApi))
+      setCategories(data.categories)
+      setRoutines(data.routines)
+      loadedRangeRef.current = rangeKey
+      setError('')
+    }).catch(e => { if (e instanceof DOMException && e.name === 'AbortError') return; setError(e instanceof Error ? e.message : 'No se pudieron cargar los datos') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [session.access_token])
+  useEffect(() => {
+    if (loadedRangeRef.current === rangeKey || bootstrapRangeRef.current === rangeKey) return
+    const controller = new AbortController()
+    setLoading(true)
+    void calendarApi.list(session, visibleRange.from, visibleRange.to, controller.signal).then(data => {
+      if (controller.signal.aborted) return
+      setTasks(data.tasks.map(fromApi))
+      setRoutineOccurrences(data.routine_occurrences.map(fromApi))
+      loadedRangeRef.current = rangeKey
+    }).catch(e => { if (e instanceof DOMException && e.name === 'AbortError') return; setError(e instanceof Error ? e.message : 'No se pudieron cargar las tareas') }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [rangeKey, session.access_token])
+  useEffect(() => {
+    if (screen !== 'overview' || overviewLoaded) return
+    const controller = new AbortController()
+    setOverviewLoading(true)
+    void tasksApi.list(session, undefined, undefined, controller.signal).then(data => { if (!controller.signal.aborted) { setOverviewTasks(data.map(fromApi)); setOverviewLoaded(true) } }).catch(e => { if (e instanceof DOMException && e.name === 'AbortError') return; setError(e instanceof Error ? e.message : 'No se pudieron cargar todas las tareas') }).finally(() => { if (!controller.signal.aborted) setOverviewLoading(false) })
+    return () => controller.abort()
+  }, [overviewLoaded, screen, session.access_token])
+  const allTasks = useMemo(() => [...tasks, ...routineOccurrences], [routineOccurrences, tasks])
+  const categoryNames = useMemo(() => new Map(categories.map(category => [category.id, category.name])), [categories])
+  const categoryCounts = useMemo(() => tasks.reduce((counts, task) => counts.set(task.categoryId, (counts.get(task.categoryId) || 0) + 1), new Map<string | null, number>()), [tasks])
+  const tasksByDate = useMemo(() => {
+    const grouped = new Map<string, Task[]>()
+    for (const task of allTasks) {
+      if (filter !== 'Todas' && (filter === 'Sin categoría' ? task.categoryId !== null : task.categoryId !== filter)) continue
+      const dateTasks = grouped.get(task.date) || []
+      dateTasks.push(task)
+      grouped.set(task.date, dateTasks)
+    }
+    grouped.forEach(dateTasks => dateTasks.sort((a, b) => a.time.localeCompare(b.time)))
+    return grouped
+  }, [allTasks, filter])
+  const categoryName = (id: string | null) => (id ? categoryNames.get(id) : undefined) || 'Sin categoría'
+  const visible = (date: string) => tasksByDate.get(date) || []
+  const completed = useMemo(() => tasks.filter(t => t.done).length, [tasks])
+  const openNew = (date = iso(weekStart), time = '09:00') => { setSelected(null); setSelectedRoutine(null); setRoutineActive(true); setDraft({ title: '', categoryId: categories[0]?.id || null, taskType: 'daily', date, time, endTime: pad(Number(time.slice(0, 2)) + 1) + ':' + time.slice(3), color: categories[0]?.color || colors[0], done: false }); setIsModal(true) }
+  const edit = (task: Task) => { if (task.routineId) return; setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done }); setIsModal(true) }
+  const editRoutine = (routine: ApiRoutine) => { setSelected(null); setSelectedRoutine(routine.id); setRoutineActive(routine.active); setDraft({ title: routine.title, categoryId: null, taskType: 'routine', date: iso(new Date()), time: routine.start_time.slice(0, 5), endTime: routine.end_time.slice(0, 5), color: routine.color, done: false }); setIsModal(true) }
+  const save = async () => {
+    if (busyAction || !draft.title.trim()) return
+    if (toMinutes(draft.endTime) <= toMinutes(draft.time)) { setError('La hora de finalización debe ser posterior a la de inicio'); return }
+    setBusyAction('save')
+    try {
+      if (draft.taskType === 'routine') {
+        const payload = { title: draft.title.trim(), start_time: draft.time, end_time: draft.endTime, color: draft.color, active: routineActive, starts_on: draft.date }
+        const routine = selectedRoutine ? await routinesApi.update(session, selectedRoutine, payload) : await routinesApi.create(session, payload)
+        setRoutines(prev => selectedRoutine ? prev.map(item => item.id === selectedRoutine ? routine : item) : [...prev, routine])
+        const occurrences = await routinesApi.occurrences(session, visibleRange.from, visibleRange.to)
+        setRoutineOccurrences(occurrences.map(fromApi))
+      } else if (selected) {
+        const original = tasks.find(task => task.id === selected) || overviewTasks.find(task => task.id === selected)
+        const updatePayload: Partial<Omit<ApiTask, 'id'>> = { title: draft.title.trim(), task_type: draft.taskType, date: draft.date, start_time: draft.time, end_time: draft.endTime, color: draft.color, completed: draft.done }
+        if (!original || original.categoryId !== draft.categoryId) updatePayload.category_id = draft.categoryId
+        const updated = fromApi(await tasksApi.update(session, selected, updatePayload))
+        updateTaskState(prev => prev.map(task => task.id === selected ? updated : task))
+      } else {
+        const created = fromApi(await tasksApi.create(session, toApi(draft)))
+        updateTaskState(prev => [...prev, created])
+      }
+      setIsModal(false)
+      setError('')
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la tarea') } finally { setBusyAction(null) }
+  }
   const shift = (delta: number) => { const d = new Date(weekStart); d.setDate(d.getDate() + delta * 7); setWeekStart(d) }
   const shiftMonth = (delta: number) => { const d = new Date(weekStart); d.setMonth(d.getMonth() + delta); setWeekStart(d) }
-  const toggleDone = async (id: string) => { const task = tasks.find(t => t.id === id); if (!task) return; try { const updated = fromApi(await tasksApi.update(session, id, { completed: !task.done })); setTasks(prev => prev.map(t => t.id === id ? updated : t)) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo actualizar la tarea') } }
-  const deleteTask = async (id: string) => { const task = tasks.find(t => t.id === id); if (!task || !window.confirm('¿Borrar “' + task.title + '”?')) return; try { await tasksApi.remove(session, id); setTasks(prev => prev.filter(t => t.id !== id)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo borrar la tarea') } }
-  const moveTask = async (id: string, date: string) => { try { const updated = fromApi(await tasksApi.update(session, id, { date })); setTasks(prev => prev.map(t => t.id === id ? updated : t)) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo mover la tarea') } }
-  const taskStyle = (task: Task, dayTasks: Task[]) => { const start = toMinutes(task.time), end = Math.max(start + 30, toMinutes(task.endTime)); const overlapping = dayTasks.filter(other => other.id !== task.id && toMinutes(other.time) < end && toMinutes(other.endTime) > start); const taskIndex = dayTasks.findIndex(other => other.id === task.id); const before = dayTasks.slice(0, taskIndex).filter(other => toMinutes(other.time) < end && toMinutes(other.endTime) > start).length; const columns = Math.max(1, overlapping.length + 1); return { top: (((start - 8 * 60) / 60) * 84 + 6) + 'px', height: (Math.max(52, ((end - start) / 60) * 84 - 8)) + 'px', width: 'calc(' + (100 / columns) + '% - 7px)', left: 'calc(' + ((before * 100) / columns) + '% + 4px)' } }
+  const toggleDone = async (id: string) => {
+    if (busyAction) return
+    const task = allTasks.find(item => item.id === id) || overviewTasks.find(item => item.id === id)
+    if (!task) return
+    setBusyAction('toggle:' + id)
+    try {
+      if (task.routineId) {
+        const updated = fromApi(await routinesApi.updateOccurrence(session, task.routineId, task.date, !task.done))
+        setRoutineOccurrences(prev => prev.map(item => item.id === id ? updated : item))
+      } else {
+        const updated = fromApi(await tasksApi.update(session, id, { completed: !task.done }))
+        updateTaskState(prev => prev.map(item => item.id === id ? updated : item))
+      }
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo actualizar la tarea') } finally { setBusyAction(null) }
+  }
+  const deleteTask = async (id: string) => {
+    const task = allTasks.find(item => item.id === id) || overviewTasks.find(item => item.id === id)
+    if (busyAction || !task || task.routineId || !window.confirm('¿Borrar “' + task.title + '”?')) return
+    setBusyAction('delete:' + id)
+    try { await tasksApi.remove(session, id); updateTaskState(prev => prev.filter(item => item.id !== id)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo borrar la tarea') } finally { setBusyAction(null) }
+  }
+  const moveTask = async (id: string, date: string) => {
+    if (busyAction) return
+    const task = allTasks.find(item => item.id === id)
+    if (task?.routineId) return
+    setBusyAction('move:' + id)
+    try { const updated = fromApi(await tasksApi.update(session, id, { date })); updateTaskState(prev => prev.map(item => item.id === id ? updated : item)) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo mover la tarea') } finally { setBusyAction(null) }
+  }
+  const toggleRoutine = async (routine: ApiRoutine) => {
+    if (busyAction) return
+    setBusyAction('routine:' + routine.id)
+    try { const updated = await routinesApi.update(session, routine.id, { active: !routine.active }); setRoutines(prev => prev.map(item => item.id === routine.id ? updated : item)); const occurrences = await routinesApi.occurrences(session, visibleRange.from, visibleRange.to); setRoutineOccurrences(occurrences.map(fromApi)) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cambiar el estado de la rutina') } finally { setBusyAction(null) }
+  }
+  const deleteRoutine = async (routine: ApiRoutine) => {
+    if (busyAction || !window.confirm('¿Borrar la rutina “' + routine.title + '”? También se eliminará su historial.')) return
+    setBusyAction('routine:' + routine.id)
+    try { await routinesApi.remove(session, routine.id); setRoutines(prev => prev.filter(item => item.id !== routine.id)); setRoutineOccurrences(prev => prev.filter(task => task.routineId !== routine.id)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo borrar la rutina') } finally { setBusyAction(null) }
+  }
+  const taskStyles = useMemo(() => {
+    const styles = new Map<string, React.CSSProperties>()
+    tasksByDate.forEach(dayTasks => dayTasks.forEach((task, taskIndex) => {
+      const start = toMinutes(task.time)
+      const end = Math.max(start + 30, toMinutes(task.endTime))
+      const overlapping = dayTasks.filter(other => other.id !== task.id && toMinutes(other.time) < end && toMinutes(other.endTime) > start)
+      const before = dayTasks.slice(0, taskIndex).filter(other => toMinutes(other.time) < end && toMinutes(other.endTime) > start).length
+      const columns = Math.max(1, overlapping.length + 1)
+      styles.set(task.id, { top: (((start - 8 * 60) / 60) * 84 + 6) + 'px', height: (Math.max(52, ((end - start) / 60) * 84 - 8)) + 'px', width: 'calc(' + (100 / columns) + '% - 7px)', left: 'calc(' + ((before * 100) / columns) + '% + 4px)' })
+    }))
+    return styles
+  }, [tasksByDate])
   const openCategory = (category?: Category) => { setCategorySelected(category?.id || null); setCategoryDraft({ name: category?.name || '', color: category?.color || colors[0] }); setCategoryModal(true) }
-  const saveCategory = async () => { if (!categoryDraft.name.trim()) return; try { if (categorySelected) { const updated = await categoriesApi.update(session, categorySelected, categoryDraft); setCategories(prev => prev.map(category => category.id === categorySelected ? updated : category)); setTasks(prev => prev.map(task => task.categoryId === categorySelected ? { ...task, color: updated.color } : task)) } else { const created = await categoriesApi.create(session, categoryDraft); setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name))) } setCategoryModal(false); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la categoría') } }
-  const deleteCategory = async (category: Category) => { if (!window.confirm('¿Eliminar “' + category.name + '”? Sus tareas pasarán a “Sin categoría”.')) return; try { await categoriesApi.remove(session, category.id); setCategories(prev => prev.filter(item => item.id !== category.id)); setTasks(prev => prev.map(task => task.categoryId === category.id ? { ...task, categoryId: null } : task)); if (filter === category.id) setFilter('Todas'); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo borrar la categoría') } }
+  const saveCategory = async () => {
+    if (busyAction || !categoryDraft.name.trim()) return
+    setBusyAction('category')
+    try {
+      if (categorySelected) {
+        const updated = await categoriesApi.update(session, categorySelected, categoryDraft)
+        setCategories(prev => prev.map(category => category.id === categorySelected ? updated : category))
+        updateTaskState(prev => prev.map(task => task.categoryId === categorySelected ? { ...task, color: updated.color } : task))
+      } else {
+        const created = await categoriesApi.create(session, categoryDraft)
+        setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+      }
+      setCategoryModal(false)
+      setError('')
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la categoría') } finally { setBusyAction(null) }
+  }
+  const deleteCategory = async (category: Category) => {
+    if (busyAction || !window.confirm('¿Eliminar “' + category.name + '”? Sus tareas pasarán a “Sin categoría”.')) return
+    setBusyAction('category:' + category.id)
+    try { await categoriesApi.remove(session, category.id); setCategories(prev => prev.filter(item => item.id !== category.id)); updateTaskState(prev => prev.map(task => task.categoryId === category.id ? { ...task, categoryId: null } : task)); if (filter === category.id) setFilter('Todas'); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo borrar la categoría') } finally { setBusyAction(null) }
+  }
 
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark">✦</div><span>Study<span>Calendar</span></span></div><nav><button className="nav-item active"><span>▦</span> Calendario</button><button className="nav-item"><span>✓</span> Todas las tareas <b>{tasks.length}</b></button><button className="nav-item"><span>◷</span> Próximas</button></nav><div className="side-section"><div className="side-title">CATEGORÍAS <button aria-label="Crear categoría" onClick={() => openCategory()}>＋</button></div>{categories.map(category => <div className="category-row" key={category.id}><button className="subject" onClick={() => setFilter(filter === category.id ? 'Todas' : category.id)}><i style={{ background: category.color }} />{category.name}<span>{tasks.filter(t => t.categoryId === category.id).length}</span></button><button className="category-edit" aria-label={'Editar ' + category.name} onClick={() => openCategory(category)}>✎</button><button className="category-delete" aria-label={'Eliminar ' + category.name} onClick={() => void deleteCategory(category)}>×</button></div>)}{tasks.some(task => task.categoryId === null) && <button className="subject" onClick={() => setFilter(filter === 'Sin categoría' ? 'Todas' : 'Sin categoría')}><i style={{ background: '#aab0bd' }} />Sin categoría<span>{tasks.filter(t => t.categoryId === null).length}</span></button>}</div><div className="side-bottom"><div className="progress-label"><span>Progreso semanal</span><strong>{Math.round((completed / Math.max(tasks.length, 1)) * 100)}%</strong></div><div className="progress"><i style={{ width: ((completed / Math.max(tasks.length, 1)) * 100) + '%' }} /></div><p>{completed} de {tasks.length} tareas completadas</p><div className="user"><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div><span>{session.user.email}<small>Cuenta conectada</small></span><button className="logout" onClick={() => supabase?.auth.signOut()}>Salir</button></div></div></aside><main className="main"><header><div><p className="eyebrow">MI PLAN DE ESTUDIO</p><h1>Mi calendario</h1><p className="subtitle">Organiza tu semana y avanza con calma.</p></div><button className="add-button" onClick={() => openNew()}>＋ <span>Nueva tarea</span></button></header>{error && <div className="error-banner">{error}<button onClick={() => setError('')}>×</button></div>}<section className="toolbar"><div className="week-nav"><button onClick={() => view === 'month' ? shiftMonth(-1) : shift(-1)}>‹</button><button onClick={() => setWeekStart(new Date(2025, 9, 6))}>Hoy</button><button onClick={() => view === 'month' ? shiftMonth(1) : shift(1)}>›</button><strong>{view === 'month' ? monthLabel : weekLabel}</strong></div><div className="view-tools"><select value={filter} onChange={e => setFilter(e.target.value)}><option value="Todas">Todas</option>{categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}<option value="Sin categoría">Sin categoría</option></select><button className={"view-btn " + (view === 'week' ? 'active' : '')} onClick={() => setView('week')}>▦ Semana</button><button className={"view-btn " + (view === 'month' ? 'active' : '')} onClick={() => setView('month')}>▦ Mes</button></div></section>{view === 'week' ? <section className="calendar"><div className="calendar-head"><div className="timezone">GMT +01:00</div>{days.map(d => <div key={iso(d)} className="day-head"><span>{d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase()}</span><strong>{d.getDate()}</strong></div>)}</div>{loading ? <div className="calendar-loading">Cargando tareas…</div> : <div className="calendar-body"><div className="time-column">{hours.map(hour => <div key={hour}>{pad(hour)}:00</div>)}</div>{days.map(d => { const dayTasks = visible(iso(d)); return <div key={iso(d)} className="day-column" onDragOver={e => e.preventDefault()} onDrop={e => { const id = e.dataTransfer.getData('task'); if (id) void moveTask(id, iso(d)) }}><div className="hour-lines">{hours.map(hour => <button key={hour} aria-label={'Crear tarea a las ' + hour + ':00'} onClick={() => openNew(iso(d), pad(hour) + ':00')} />)}</div>{dayTasks.map(task => <div key={task.id} className="positioned-task" style={taskStyle(task, dayTasks)}><TaskCard task={task} categoryName={categoryName(task.categoryId)} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} /></div>)}</div>})}</div>}</section> : <section className="calendar month-calendar"><div className="month-weekdays">{['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].map(day => <div key={day}>{day}</div>)}</div><div className="month-grid">{monthDays.map(day => { const dayTasks = visible(iso(day)); const inMonth = day.getMonth() === monthStart.getMonth(); return <div key={iso(day)} className={'month-day ' + (!inMonth ? 'outside' : '')} onDragOver={e => e.preventDefault()} onDrop={e => { const id = e.dataTransfer.getData('task'); if (id) void moveTask(id, iso(day)) }} onDoubleClick={() => openNew(iso(day))}><button className="month-day-number" onClick={() => openNew(iso(day))}>{day.getDate()}</button><div className="month-tasks">{dayTasks.slice(0, 4).map(task => <button key={task.id} className={'month-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties} onClick={e => { e.stopPropagation(); edit(task) }}><span>{task.time}</span> {task.title}</button>)}{dayTasks.length > 4 && <span className="month-more">+{dayTasks.length - 4} más</span>}</div></div>})}</div></section>}<div className="tip"><span>✦</span><p><strong>Consejo de estudio</strong><br />Haz clic en una franja horaria para crear una sesión con esa hora.</p><button>×</button></div></main>{isModal && <div className="modal-backdrop" onClick={() => setIsModal(false)}><div className="modal" onClick={e => e.stopPropagation()}><div className="modal-head"><div><p className="eyebrow">{selected ? 'EDITAR TAREA' : 'NUEVA TAREA'}</p><h2>{selected ? 'Ajusta tu tarea' : '¿Qué quieres estudiar?'}</h2></div><button onClick={() => setIsModal(false)}>×</button></div><label>Título<input autoFocus value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Ej. Repasar tema 3" /></label><div className="form-grid"><label>Categoría<select value={draft.categoryId || ''} onChange={e => { const category = categories.find(item => item.id === e.target.value); setDraft({ ...draft, categoryId: e.target.value || null, color: category?.color || draft.color }) }}>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}<option value="">Sin categoría</option></select></label><label>Fecha<input type="date" value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })} /></label></div><div className="form-grid"><TimePicker label="Hora de inicio" value={draft.time} onChange={time => setDraft({ ...draft, time })} /><TimePicker label="Hora de finalización" value={draft.endTime} onChange={endTime => setDraft({ ...draft, endTime })} /></div><label className="completed-toggle"><input type="checkbox" checked={draft.done} onChange={e => setDraft({ ...draft, done: e.target.checked })} /><span>Marcar como completada</span></label><label>Color<div className="color-picker">{colors.map(c => <button type="button" key={c} style={{ background: c }} className={draft.color === c ? 'selected' : ''} onClick={() => setDraft({ ...draft, color: c })} />)}</div></label><div className="modal-actions"><button className="cancel" onClick={() => setIsModal(false)}>Cancelar</button><button className="save" onClick={() => void save()}>Guardar tarea</button></div></div></div>}{categoryModal && <div className="modal-backdrop" onClick={() => setCategoryModal(false)}><div className="modal category-modal" onClick={e => e.stopPropagation()}><div className="modal-head"><div><p className="eyebrow">{categorySelected ? 'EDITAR CATEGORÍA' : 'NUEVA CATEGORÍA'}</p><h2>{categorySelected ? 'Ajusta la categoría' : 'Nueva categoría'}</h2></div><button onClick={() => setCategoryModal(false)}>×</button></div><label>Nombre<input autoFocus value={categoryDraft.name} onChange={e => setCategoryDraft({ ...categoryDraft, name: e.target.value })} placeholder="Ej. Física" /></label><label>Color<div className="color-picker">{colors.map(c => <button type="button" key={c} style={{ background: c }} className={categoryDraft.color === c ? 'selected' : ''} onClick={() => setCategoryDraft({ ...categoryDraft, color: c })} />)}</div></label><div className="modal-actions"><button className="cancel" onClick={() => setCategoryModal(false)}>Cancelar</button><button className="save" onClick={() => void saveCategory()}>Guardar categoría</button></div></div></div>}</div>
+  return <div className="app-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark">✦</div><span>Study<span>Calendar</span></span></div><nav><button className={"nav-item " + (screen === 'calendar' ? 'active' : '')} onClick={() => setScreen('calendar')}><span>▦</span> Calendario</button><button className={"nav-item " + (screen === 'overview' ? 'active' : '')} onClick={() => setScreen('overview')}><span>✓</span> Todas las tareas <b>{overviewLoaded ? overviewTasks.length : tasks.length}</b></button><button className="nav-item"><span>◷</span> Próximas</button></nav><div className="side-section"><div className="side-title">CATEGORÍAS <button aria-label="Crear categoría" onClick={() => openCategory()}>＋</button></div>{categories.map(category => <div className="category-row" key={category.id}><button className="subject" onClick={() => setFilter(filter === category.id ? 'Todas' : category.id)}><i style={{ background: category.color }} />{category.name}<span>{categoryCounts.get(category.id) || 0}</span></button><button className="category-edit" aria-label={'Editar ' + category.name} onClick={() => openCategory(category)}>✎</button><button className="category-delete" aria-label={'Eliminar ' + category.name} onClick={() => void deleteCategory(category)}>×</button></div>)}{(categoryCounts.get(null) || 0) > 0 && <button className="subject" onClick={() => setFilter(filter === 'Sin categoría' ? 'Todas' : 'Sin categoría')}><i style={{ background: '#aab0bd' }} />Sin categoría<span>{categoryCounts.get(null) || 0}</span></button>}</div><div className="side-bottom"><div className="progress-label"><span>Progreso semanal</span><strong>{Math.round((completed / Math.max(tasks.length, 1)) * 100)}%</strong></div><div className="progress"><i style={{ width: ((completed / Math.max(tasks.length, 1)) * 100) + '%' }} /></div><p>{completed} de {tasks.length} tareas completadas</p><div className="user"><div className="avatar">{session.user.email?.slice(0, 2).toUpperCase()}</div><span>{session.user.email}<small>Cuenta conectada</small></span><button className="logout" onClick={() => supabase?.auth.signOut()}>Salir</button></div></div></aside><main className="main"><header><div><p className="eyebrow">MI PLAN DE ESTUDIO</p><h1>Mi calendario</h1><p className="subtitle">Organiza tu semana y avanza con calma.</p></div><button className="add-button" onClick={() => openNew()}>＋ <span>Nueva tarea</span></button></header>{error && <div className="error-banner">{error}<button onClick={() => setError('')}>×</button></div>}{screen === 'calendar' ? <><section className="toolbar"><div className="week-nav"><button onClick={() => view === 'month' ? shiftMonth(-1) : shift(-1)}>‹</button><button onClick={() => setWeekStart(new Date(2025, 9, 6))}>Hoy</button><button onClick={() => view === 'month' ? shiftMonth(1) : shift(1)}>›</button><strong>{view === 'month' ? monthLabel : weekLabel}</strong></div><div className="view-tools"><select value={filter} onChange={e => setFilter(e.target.value)}><option value="Todas">Todas</option>{categories.map(category => <option value={category.id} key={category.id}>{category.name}</option>)}<option value="Sin categoría">Sin categoría</option></select><button className={"view-btn " + (view === 'week' ? 'active' : '')} onClick={() => setView('week')}>▦ Semana</button><button className={"view-btn " + (view === 'month' ? 'active' : '')} onClick={() => setView('month')}>▦ Mes</button></div></section>{view === 'week' ? <section className="calendar"><div className="calendar-head"><div className="timezone">GMT +01:00</div>{days.map(d => <div key={iso(d)} className={'day-head ' + (iso(d) === today ? 'today' : '')}><span>{d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase()}</span><strong>{d.getDate()}</strong></div>)}</div>{loading ? <div className="calendar-loading">Cargando tareas…</div> : <div className="calendar-body"><div className="time-column">{hours.map(hour => <div key={hour}>{pad(hour)}:00</div>)}</div>{days.map(d => { const dayTasks = visible(iso(d)); return <div key={iso(d)} className="day-column" onDragOver={e => e.preventDefault()} onDrop={e => { const id = e.dataTransfer.getData('task'); if (id) void moveTask(id, iso(d)) }}><div className="hour-lines">{hours.map(hour => <button key={hour} aria-label={'Crear tarea a las ' + hour + ':00'} onClick={() => openNew(iso(d), pad(hour) + ':00')} />)}</div>{dayTasks.map(task => <div key={task.id} className="positioned-task" style={taskStyles.get(task.id)}><TaskCard task={task} categoryName={categoryName(task.categoryId)} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} locked={Boolean(task.routineId)} /></div>)}</div>})}</div>}</section> : <section className="calendar month-calendar"><div className="month-weekdays">{['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'].map(day => <div key={day}>{day}</div>)}</div><div className="month-grid">{monthDays.map(day => { const dayTasks = visible(iso(day)); const inMonth = day.getMonth() === monthStart.getMonth(); return <div key={iso(day)} className={'month-day ' + (!inMonth ? 'outside ' : '') + (iso(day) === today ? 'today' : '')} onDragOver={e => e.preventDefault()} onDrop={e => { const id = e.dataTransfer.getData('task'); if (id) void moveTask(id, iso(day)) }} onDoubleClick={() => openNew(iso(day))}><button className="month-day-number" onClick={() => openNew(iso(day))}>{day.getDate()}</button><div className="month-tasks">{dayTasks.slice(0, 4).map(task => <button key={task.id} className={'month-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties} onClick={e => { e.stopPropagation(); task.routineId ? void toggleDone(task.id) : edit(task) }}><span>{task.time}</span> {task.title}</button>)}{dayTasks.length > 4 && <span className="month-more">+{dayTasks.length - 4} más</span>}</div></div>})}</div></section>}<div className="tip"><span>✦</span><p><strong>Consejo de estudio</strong><br />Haz clic en una franja horaria para crear una sesión con esa hora.</p><button>×</button></div></> : overviewLoading ? <div className="calendar-loading">Cargando tareas…</div> : <TaskOverview tasks={overviewTasks} routines={routines} categoryName={categoryName} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} onEditRoutine={editRoutine} onToggleRoutine={toggleRoutine} onDeleteRoutine={deleteRoutine} />}</main>{isModal && <div className="modal-backdrop" onClick={() => setIsModal(false)}><div className={"modal " + (draft.taskType === 'routine' ? 'routine-modal' : '')} onClick={e => e.stopPropagation()}><div className="modal-head"><div><p className="eyebrow">{selected ? 'EDITAR TAREA' : 'NUEVA TAREA'}</p><h2>{selected ? 'Ajusta tu tarea' : '¿Qué quieres estudiar?'}</h2></div><button onClick={() => setIsModal(false)}>×</button></div><label>Título<input autoFocus value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Ej. Repasar tema 3" /></label><div className="form-grid">{draft.taskType !== 'routine' && <label>Categoría<select value={draft.categoryId || ''} onChange={e => { const category = categories.find(item => item.id === e.target.value); setDraft({ ...draft, categoryId: e.target.value || null, color: category?.color || draft.color }) }}>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}<option value="">Sin categoría</option></select></label>}<label>Tipo de tarea<select value={draft.taskType} disabled={Boolean(selectedRoutine)} onChange={e => setDraft({ ...draft, taskType: e.target.value as TaskType })}><option value="daily">Tareas del día</option><option value="routine">Rutina</option><option value="project">Proyectos</option></select></label><label>{draft.taskType === 'routine' ? 'Fecha inicial' : 'Fecha'}<input type="date" disabled={Boolean(selectedRoutine)} value={draft.date} onChange={e => setDraft({ ...draft, date: e.target.value })} /></label></div><div className="form-grid"><TimePicker label="Hora de inicio" value={draft.time} onChange={time => setDraft({ ...draft, time })} /><TimePicker label="Hora de finalización" value={draft.endTime} onChange={endTime => setDraft({ ...draft, endTime })} /></div>{draft.taskType !== 'routine' && <label className="completed-toggle"><input type="checkbox" checked={draft.done} onChange={e => setDraft({ ...draft, done: e.target.checked })} /><span>Marcar como completada</span></label>}{draft.taskType === 'routine' && <label className="completed-toggle"><input type="checkbox" checked={routineActive} onChange={e => setRoutineActive(e.target.checked)} /><span>Rutina activa</span></label>}<label>Color<div className="color-picker">{colors.map(c => <button type="button" key={c} style={{ background: c }} className={draft.color === c ? 'selected' : ''} onClick={() => setDraft({ ...draft, color: c })} />)}</div></label><div className="modal-actions"><button className="cancel" onClick={() => setIsModal(false)}>Cancelar</button><button className="save" disabled={busyAction === 'save'} onClick={() => void save()}>{busyAction === 'save' ? 'Guardando…' : 'Guardar tarea'}</button></div></div></div>}{categoryModal && <div className="modal-backdrop" onClick={() => setCategoryModal(false)}><div className="modal category-modal" onClick={e => e.stopPropagation()}><div className="modal-head"><div><p className="eyebrow">{categorySelected ? 'EDITAR CATEGORÍA' : 'NUEVA CATEGORÍA'}</p><h2>{categorySelected ? 'Ajusta la categoría' : 'Nueva categoría'}</h2></div><button onClick={() => setCategoryModal(false)}>×</button></div><label>Nombre<input autoFocus value={categoryDraft.name} onChange={e => setCategoryDraft({ ...categoryDraft, name: e.target.value })} placeholder="Ej. Física" /></label><label>Color<div className="color-picker">{colors.map(c => <button type="button" key={c} style={{ background: c }} className={categoryDraft.color === c ? 'selected' : ''} onClick={() => setCategoryDraft({ ...categoryDraft, color: c })} />)}</div></label><div className="modal-actions"><button className="cancel" onClick={() => setCategoryModal(false)}>Cancelar</button><button className="save" disabled={Boolean(busyAction)} onClick={() => void saveCategory()}>{busyAction === 'category' ? 'Guardando…' : 'Guardar categoría'}</button></div></div></div>}</div>
 }
 
 function App() {
