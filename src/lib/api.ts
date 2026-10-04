@@ -1,10 +1,11 @@
 import type { Session } from '@supabase/supabase-js'
 
 export type ApiCategory = { id: string; name: string; color: string }
-export type ApiTask = { id: string; title: string; category_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string; start_time: string; end_time: string; color: string; completed: boolean }
+export type ApiProject = { id: string; name: string; color: string; created_at: string; updated_at: string }
+export type ApiTask = { id: string; title: string; category_id: string | null; project_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string; start_time: string; end_time: string; color: string; completed: boolean }
 export type ApiRoutine = { id: string; title: string; start_time: string; end_time: string; color: string; active: boolean; created_at: string; updated_at: string }
 export type ApiRoutineOccurrence = ApiTask & { routine_id: string }
-export type ApiBootstrap = { categories: ApiCategory[]; routines: ApiRoutine[]; tasks: ApiTask[]; routine_occurrences: ApiRoutineOccurrence[] }
+export type ApiBootstrap = { categories: ApiCategory[]; projects: ApiProject[]; routines: ApiRoutine[]; tasks: ApiTask[]; routine_occurrences: ApiRoutineOccurrence[] }
 
 const apiUrl = (import.meta.env.VITE_API_URL as string | undefined || 'http://localhost:5000').replace(/\/$/, '')
 
@@ -20,6 +21,13 @@ export const categoriesApi = {
   create: (session: Session, category: Omit<ApiCategory, 'id'>) => request<ApiCategory>('/api/categories', session, { method: 'POST', body: JSON.stringify(category) }),
   update: (session: Session, id: string, category: Partial<Omit<ApiCategory, 'id'>>) => request<ApiCategory>(`/api/categories/${id}`, session, { method: 'PATCH', body: JSON.stringify(category) }),
   remove: (session: Session, id: string) => request<{ deleted: string }>(`/api/categories/${id}`, session, { method: 'DELETE' }),
+}
+
+export const projectsApi = {
+  list: (session: Session) => request<{ projects: ApiProject[] }>('/api/projects', session),
+  create: (session: Session, project: Omit<ApiProject, 'id' | 'created_at' | 'updated_at'>) => request<ApiProject>('/api/projects', session, { method: 'POST', body: JSON.stringify(project) }),
+  update: (session: Session, id: string, project: Partial<Omit<ApiProject, 'id' | 'created_at' | 'updated_at'>>) => request<ApiProject>(`/api/projects/${id}`, session, { method: 'PATCH', body: JSON.stringify(project) }),
+  remove: (session: Session, id: string) => request<{ deleted: string }>(`/api/projects/${id}`, session, { method: 'DELETE' }),
 }
 
 export const tasksApi = {

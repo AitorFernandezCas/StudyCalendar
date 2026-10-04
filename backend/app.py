@@ -7,21 +7,25 @@ from collections import OrderedDict
 from datetime import date, timedelta
 from functools import wraps
 from threading import RLock
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, request
 from flask_cors import CORS
 from supabase import Client, create_client
 from supabase.client import ClientOptions
+from werkzeug.exceptions import HTTPException
 
 load_dotenv()
 
-TASK_FIELDS = {"title", "category_id", "task_type", "date", "start_time", "end_time", "color", "completed"}
+TASK_FIELDS = {"title", "category_id", "project_id", "task_type", "date", "start_time", "end_time", "color", "completed"}
 CATEGORY_FIELDS = {"name", "color"}
+PROJECT_FIELDS = {"name", "color"}
 ROUTINE_FIELDS = {"title", "start_time", "end_time", "color", "active", "starts_on"}
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
-TASK_SELECT = "id,title,category_id,task_type,date,start_time,end_time,color,completed"
+TASK_SELECT = "id,title,category_id,project_id,task_type,date,start_time,end_time,color,completed"
 CATEGORY_SELECT = "id,name,color"
+PROJECT_SELECT = "id,name,color,created_at,updated_at"
 ROUTINE_SELECT = "id,title,start_time,end_time,color,active,created_at,updated_at"
 PERIOD_SELECT = "id,routine_id,starts_on,ends_on"
 COMPLETION_SELECT = "routine_id,occurrence_date,completed"
@@ -149,6 +153,22 @@ def _category_payload(required_name: bool = False):
     return body, None
 
 
+def _project_payload(required_name: bool = False):
+    body, error = _json_body(PROJECT_FIELDS)
+    if error:
+        return None, error
+    name = str(body.get("name", "")).strip()
+    if required_name and not name:
+        return None, {"error": "name is required"}
+    if "name" in body:
+        if not name:
+            return None, {"error": "name cannot be empty"}
+        body["name"] = name
+    if "color" in body and (not isinstance(body["color"], str) or not HEX_COLOR.fullmatch(body["color"])):
+        return None, {"error": "color must be a hexadecimal value such as #ee7b6f"}
+    return body, None
+
+
 def _task_payload(required_title: bool = False):
     body, error = _json_body(TASK_FIELDS)
     if error:
@@ -169,6 +189,20 @@ def _validate_task_category(payload):
     category_id = payload.get("category_id")
     if category_id is not None and not _category_belongs_to_user(category_id):
         return {"error": "Category not found"}
+    return None
+
+
+def _project_belongs_to_user(project_id: str) -> bool:
+    result = g.supabase.schema("Task").table("projects").select("id").eq("id", project_id).eq("user_id", str(g.user.id)).execute()
+    return bool(result.data)
+
+
+def _validate_task_project(payload):
+    project_id = payload.get("project_id")
+    if payload.get("task_type") == "project" and not project_id:
+        return {"error": "project_id is required for project tasks"}
+    if project_id is not None and not _project_belongs_to_user(project_id):
+        return {"error": "Project not found"}
     return None
 
 
@@ -233,6 +267,10 @@ def _category_query():
     return g.supabase.schema("Task").table("category").select(CATEGORY_SELECT).order("name")
 
 
+def _project_query():
+    return g.supabase.schema("Task").table("projects").select(PROJECT_SELECT).order("name")
+
+
 def _routine_query():
     return g.supabase.schema("Task").table("routine").select(ROUTINE_SELECT).order("created_at")
 
@@ -263,7 +301,7 @@ def _routine_occurrences(routines, periods, completions, start_date, end_date):
             current = period_start
             while current <= period_end:
                 occurrence_date = current.isoformat()
-                occurrences.append({"id": f"{routine['id']}:{occurrence_date}", "routine_id": routine["id"], "title": routine["title"], "category_id": None, "task_type": "routine", "date": occurrence_date, "start_time": routine["start_time"], "end_time": routine["end_time"], "color": routine["color"], "completed": completed.get((routine["id"], occurrence_date), False)})
+                occurrences.append({"id": f"{routine['id']}:{occurrence_date}", "routine_id": routine["id"], "title": routine["title"], "category_id": None, "project_id": None, "task_type": "routine", "date": occurrence_date, "start_time": routine["start_time"], "end_time": routine["end_time"], "color": routine["color"], "completed": completed.get((routine["id"], occurrence_date), False)})
                 current += timedelta(days=1)
     return occurrences
 
@@ -271,7 +309,21 @@ def _routine_occurrences(routines, periods, completions, start_date, end_date):
 def create_app():
     app = Flask(__name__)
     origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").strip()
-    CORS(app, resources={r"/api/*": {"origins": origin}}, expose_headers=["Server-Timing", "X-Response-Time-ms"], supports_credentials=False)
+    origins = [origin]
+    if urlparse(origin).hostname in {"localhost", "127.0.0.1"}:
+        origins.extend(f"http://{host}:{port}" for host in ("localhost", "127.0.0.1") for port in range(5173, 5184))
+    CORS(app, resources={r"/api/*": {"origins": origins}}, expose_headers=["Server-Timing", "X-Response-Time-ms"], supports_credentials=False)
+
+    @app.errorhandler(Exception)
+    def handle_api_error(error):
+        if not request.path.startswith("/api/"):
+            if isinstance(error, HTTPException):
+                return error
+            raise error
+        if isinstance(error, HTTPException):
+            return jsonify({"error": error.description}), error.code
+        app.logger.exception("API request failed")
+        return jsonify({"error": "No se pudo completar la operación. Inténtalo de nuevo."}), 500
 
     @app.before_request
     def start_request_timer():
@@ -304,7 +356,7 @@ def create_app():
             return jsonify(error), 400
         payload["user_id"] = str(g.user.id)
         try:
-            result = g.supabase.schema("Task").table("category").insert(payload).select(CATEGORY_SELECT).execute()
+            result = g.supabase.schema("Task").table("category").insert(payload).execute()
         except Exception as exc:
             if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
                 return jsonify({"error": "A category with this name already exists"}), 409
@@ -320,7 +372,7 @@ def create_app():
         if not payload:
             return jsonify({"error": "At least one field is required"}), 400
         try:
-            result = g.supabase.schema("Task").table("category").update(payload).eq("id", category_id).select(CATEGORY_SELECT).execute()
+            result = g.supabase.schema("Task").table("category").update(payload).eq("id", category_id).execute()
         except Exception as exc:
             if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
                 return jsonify({"error": "A category with this name already exists"}), 409
@@ -334,10 +386,57 @@ def create_app():
     @app.delete("/api/categories/<category_id>")
     @require_user
     def delete_category(category_id):
-        result = g.supabase.schema("Task").table("category").delete().eq("id", category_id).select("id").execute()
+        result = g.supabase.schema("Task").table("category").delete().eq("id", category_id).execute()
         if not result.data:
             return jsonify({"error": "Category not found"}), 404
         return jsonify({"deleted": category_id})
+
+    @app.get("/api/projects")
+    @require_user
+    def list_projects():
+        result = _project_query().execute()
+        return jsonify({"projects": result.data or []})
+
+    @app.post("/api/projects")
+    @require_user
+    def create_project():
+        payload, error = _project_payload(required_name=True)
+        if error:
+            return jsonify(error), 400
+        payload["user_id"] = str(g.user.id)
+        try:
+            result = g.supabase.schema("Task").table("projects").insert(payload).execute()
+        except Exception as exc:
+            if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
+                return jsonify({"error": "Ya existe un proyecto con ese nombre"}), 409
+            raise
+        return jsonify(result.data[0]), 201
+
+    @app.patch("/api/projects/<project_id>")
+    @require_user
+    def update_project(project_id):
+        payload, error = _project_payload()
+        if error:
+            return jsonify(error), 400
+        if not payload:
+            return jsonify({"error": "At least one field is required"}), 400
+        try:
+            result = g.supabase.schema("Task").table("projects").update(payload).eq("id", project_id).execute()
+        except Exception as exc:
+            if "duplicate" in str(exc).lower() or "unique" in str(exc).lower():
+                return jsonify({"error": "Ya existe un proyecto con ese nombre"}), 409
+            raise
+        if not result.data:
+            return jsonify({"error": "Project not found"}), 404
+        return jsonify(result.data[0])
+
+    @app.delete("/api/projects/<project_id>")
+    @require_user
+    def delete_project(project_id):
+        result = g.supabase.schema("Task").table("projects").delete().eq("id", project_id).execute()
+        if not result.data:
+            return jsonify({"error": "Project not found"}), 404
+        return jsonify({"deleted": project_id})
 
     @app.get("/api/routines")
     @require_user
@@ -354,7 +453,7 @@ def create_app():
         starts_on = payload.pop("starts_on", date.today().isoformat())
         active = payload.get("active", True)
         payload["user_id"] = str(g.user.id)
-        result = g.supabase.schema("Task").table("routine").insert(payload).select(ROUTINE_SELECT).execute()
+        result = g.supabase.schema("Task").table("routine").insert(payload).execute()
         routine = result.data[0]
         if active:
             g.supabase.schema("Task").table("routine_period").insert({"routine_id": routine["id"], "user_id": str(g.user.id), "starts_on": starts_on, "ends_on": None}).execute()
@@ -377,7 +476,7 @@ def create_app():
         if starts_on:
             payload["active"] = current["active"] if active_change is None else active_change
         if payload:
-            result = g.supabase.schema("Task").table("routine").update(payload).eq("id", routine_id).select(ROUTINE_SELECT).execute()
+            result = g.supabase.schema("Task").table("routine").update(payload).eq("id", routine_id).execute()
             routine = result.data[0]
         else:
             routine = current
@@ -403,7 +502,7 @@ def create_app():
     @app.delete("/api/routines/<routine_id>")
     @require_user
     def delete_routine(routine_id):
-        result = g.supabase.schema("Task").table("routine").delete().eq("id", routine_id).select("id").execute()
+        result = g.supabase.schema("Task").table("routine").delete().eq("id", routine_id).execute()
         if not result.data:
             return jsonify({"error": "Routine not found"}), 404
         return jsonify({"deleted": routine_id})
@@ -433,7 +532,7 @@ def create_app():
             return jsonify({"error": "Routine occurrence not found"}), 404
         g.supabase.schema("Task").table("routine_completion").upsert({"routine_id": routine_id, "user_id": str(g.user.id), "occurrence_date": occurrence_date, "completed": payload["completed"]}, on_conflict="routine_id,occurrence_date").execute()
         routine = routines[0]
-        return jsonify({"id": f"{routine_id}:{occurrence_date}", "routine_id": routine_id, "title": routine["title"], "category_id": None, "task_type": "routine", "date": occurrence_date, "start_time": routine["start_time"], "end_time": routine["end_time"], "color": routine["color"], "completed": payload["completed"]})
+        return jsonify({"id": f"{routine_id}:{occurrence_date}", "routine_id": routine_id, "title": routine["title"], "category_id": None, "project_id": None, "task_type": "routine", "date": occurrence_date, "start_time": routine["start_time"], "end_time": routine["end_time"], "color": routine["color"], "completed": payload["completed"]})
 
     @app.get("/api/calendar")
     @require_user
@@ -452,10 +551,11 @@ def create_app():
         if error:
             return jsonify(error), 400
         categories = _category_query().execute()
+        projects = _project_query().execute()
         tasks = _task_query(start_date, end_date).execute()
         routines = _routine_query().execute()
         routine_rows = routines.data or []
-        return jsonify({"categories": categories.data or [], "routines": routine_rows, "tasks": tasks.data or [], "routine_occurrences": _routine_occurrence_data(routine_rows, start_date, end_date)})
+        return jsonify({"categories": categories.data or [], "projects": projects.data or [], "routines": routine_rows, "tasks": tasks.data or [], "routine_occurrences": _routine_occurrence_data(routine_rows, start_date, end_date)})
 
     @app.get("/api/tasks")
     @require_user
@@ -475,8 +575,11 @@ def create_app():
         category_error = _validate_task_category(payload)
         if category_error:
             return jsonify(category_error), 400
+        project_error = _validate_task_project(payload)
+        if project_error:
+            return jsonify(project_error), 400
         payload["user_id"] = str(g.user.id)
-        result = g.supabase.schema("Task").table("tasks").insert(payload).select(TASK_SELECT).execute()
+        result = g.supabase.schema("Task").table("tasks").insert(payload).execute()
         return jsonify(result.data[0]), 201
 
     @app.patch("/api/tasks/<task_id>")
@@ -490,7 +593,10 @@ def create_app():
         category_error = _validate_task_category(payload)
         if category_error:
             return jsonify(category_error), 400
-        result = g.supabase.schema("Task").table("tasks").update(payload).eq("id", task_id).select(TASK_SELECT).execute()
+        project_error = _validate_task_project(payload)
+        if project_error:
+            return jsonify(project_error), 400
+        result = g.supabase.schema("Task").table("tasks").update(payload).eq("id", task_id).execute()
         if not result.data:
             return jsonify({"error": "Task not found"}), 404
         return jsonify(result.data[0])
@@ -498,7 +604,7 @@ def create_app():
     @app.delete("/api/tasks/<task_id>")
     @require_user
     def delete_task(task_id):
-        result = g.supabase.schema("Task").table("tasks").delete().eq("id", task_id).select("id").execute()
+        result = g.supabase.schema("Task").table("tasks").delete().eq("id", task_id).execute()
         if not result.data:
             return jsonify({"error": "Task not found"}), 404
         return jsonify({"deleted": task_id})
