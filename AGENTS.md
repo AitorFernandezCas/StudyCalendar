@@ -4,8 +4,8 @@
 
 StudyCalendar is a Vite + React + TypeScript frontend backed by a Flask API and Supabase.
 
-- `src/App.tsx` contains the calendar, week/month views, all-tasks and projects views, drag-and-drop for ordinary tasks, modal forms, and routine restrictions.
-- `src/lib/navigation.ts` maps the calendar, all-tasks, and projects screens to `/`, `/tareas`, and `/proyectos`, and keeps browser history navigation in sync.
+- `src/App.tsx` contains the calendar, week/month views, all-tasks, projects, and routines views, drag-and-drop for ordinary tasks, modal forms, and routine restrictions.
+- `src/lib/navigation.ts` maps the calendar, all-tasks, projects, and routines screens to `/`, `/tareas`, `/proyectos`, and `/rutinas`, and keeps browser history navigation in sync.
 - `src/lib/api.ts` is the typed client for Flask endpoints; `src/lib/supabase.ts` handles Supabase Auth and persistent sessions.
 - `src/styles.css` contains the shared responsive UI styles.
 - `backend/app.py` provides the Flask app factory, bearer-token validation, CORS, task/category/project/routine endpoints, and occurrence generation. `backend/wsgi.py` is the production entry point.
@@ -18,9 +18,9 @@ All application tables live in schema `"Task"`: `tasks`, `category`, `projects`,
 
 Projects have a name and color, are unique by case-insensitive name per user, and are managed through the authenticated `/api/projects` CRUD endpoints. Project-task associations are validated against the authenticated user's projects. Preserve row-level security and user ownership when changing the project schema or API.
 
-The frontend uses `/` for the calendar, `/tareas` for “Todas las tareas”, and `/proyectos` for the dedicated projects view. Keep the URL and selected screen synchronized with browser back/forward navigation. “Proyectos” groups project tasks by associated project, including historical and completed tasks; tasks without an association appear under “Sin proyecto”. Project progress uses all associated tasks. “Todas las tareas” shows pending daily and project tasks, including those with past dates, and hides completed daily and project tasks. The calendar continues to show completed tasks. Routine activation is independent of task completion; preserve the routine occurrence rules below.
+The frontend uses `/` for the calendar, `/tareas` for “Todas las tareas”, `/proyectos` for the dedicated projects view, and `/rutinas` for active and inactive routines. Keep the URL and selected screen synchronized with browser back/forward navigation. “Proyectos” groups project tasks by associated project, including historical and completed tasks; tasks without an association appear under “Sin proyecto”. Project progress uses all associated tasks. “Todas las tareas” shows pending daily and project tasks, including those with past dates, and hides completed daily and project tasks. The calendar continues to show completed tasks. Routine activation is independent of task completion; preserve the routine occurrence rules below.
 
-Routines have no category. They repeat daily through active periods; completions are stored per routine and date. Calendar occurrences are read-only except for complete/uncomplete. Routine definitions are edited, activated/deactivated, or deleted only from “Todas las tareas”. Inactive routines may show historical dates only; they must never generate today or future occurrences.
+Routines have no category. They repeat daily through active periods; completions are stored per routine and date. Calendar occurrences are read-only except for complete/uncomplete. Routine definitions are edited, activated/deactivated, or deleted from “Todas las tareas” and the dedicated “Rutina” page. Inactive routines may show historical dates only; they must never generate today or future occurrences.
 
 ## Development Commands
 

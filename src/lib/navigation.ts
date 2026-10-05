@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export type Screen = 'calendar' | 'overview' | 'projects'
+export type Screen = 'calendar' | 'overview' | 'projects' | 'routines'
 
 export const screenPaths: Record<Screen, string> = {
   calendar: '/',
   overview: '/tareas',
   projects: '/proyectos',
+  routines: '/rutinas',
 }
 
 export function screenFromPath(pathname: string): Screen {
   const path = pathname.replace(/\/+$/, '') || '/'
   if (path === screenPaths.projects) return 'projects'
+  if (path === screenPaths.routines) return 'routines'
   if (path === screenPaths.overview) return 'overview'
   return 'calendar'
 }

@@ -75,3 +75,16 @@
 @media(max-width:650px){.projects-view .project-card{padding:12px}.projects-view .overview-category{display:none}.projects-toolbar{flex-wrap:wrap}.projects-view{margin-top:20px}}
 .projects-view .overview-task.done{opacity:1;background:#f6f7fb}
 .projects-view .overview-task.done .overview-task-main strong{color:#838998}
+.overview-section-head .routines-heading-button span{color:#7c5cff}
+.routines-view{margin-top:28px}
+.routine-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:22px;align-items:start}
+.routine-edit-button{border:0;background:transparent;padding:4px 0;text-align:left;cursor:pointer;font:inherit}
+.routine-edit-button:focus-visible{outline:2px solid #7056ed;outline-offset:3px;border-radius:3px}
+.routine-status{font-size:10px;color:#7056ed;white-space:nowrap}
+.routine-definition.inactive{opacity:1;background:#f6f7fb}
+.routine-definition.inactive .routine-status{color:#737b8c}
+.routine-definition{cursor:default}
+.routine-definition button:disabled,.add-button:disabled{opacity:.5;cursor:wait}
+.routine-definition .delete-task{opacity:1!important}
+@media(max-width:1050px){.routine-sections{grid-template-columns:1fr}}
+@media(max-width:650px){.routines-view{margin-top:20px}.routine-sections{gap:12px}}
