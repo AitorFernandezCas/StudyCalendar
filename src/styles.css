@@ -81,6 +81,21 @@
 .routine-edit-button{border:0;background:transparent;padding:4px 0;text-align:left;cursor:pointer;font:inherit}
 .routine-edit-button:focus-visible{outline:2px solid #7056ed;outline-offset:3px;border-radius:3px}
 .routine-status{font-size:10px;color:#7056ed;white-space:nowrap}
+.routine-streaks{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:11px;line-height:1.5;color:#747d8f}
+.routine-streaks b{color:#7056ed}
+.habit-group h4{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#5c6577;margin:15px 0 10px}
+.habit-group h4 span{font-size:11px;color:#8c94a3}
+.daily-habit{cursor:default;padding:12px;gap:12px}
+.daily-habit:hover{transform:none}
+.daily-habit.done{opacity:1;background:#f6f7fb}
+.daily-habit.done strong{color:#828b9c}
+.daily-habit .overview-task-main strong,.routine-definition .overview-task-main strong{white-space:normal;overflow-wrap:anywhere;font-size:12px}
+.habit-completion{flex:none;width:32px;height:32px;border:1px solid #ddd7ff;border-radius:50%;background:#f5f2ff;color:#7056ed;font-size:22px;cursor:pointer}
+.habit-completion[aria-pressed=true]{background:#7056ed;color:white}
+.habit-completion:disabled{opacity:.5;cursor:wait}
+.habit-completion:focus-visible{outline:2px solid #7056ed;outline-offset:3px}
+.routine-load-state{font-size:12px;padding:18px 0;color:#9d4a55;overflow-wrap:anywhere}
+.routine-load-state button{border:1px solid #ddd7ff;border-radius:6px;padding:7px 12px;background:#f5f2ff;color:#7056ed;cursor:pointer}
 .routine-definition.inactive{opacity:1;background:#f6f7fb}
 .routine-definition.inactive .routine-status{color:#737b8c}
 .routine-definition{cursor:default}
