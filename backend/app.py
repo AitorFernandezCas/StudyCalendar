@@ -4,7 +4,8 @@ import os
 import re
 import time
 from collections import OrderedDict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from functools import wraps
 from threading import RLock
 from urllib.parse import urlparse
@@ -21,14 +22,13 @@ load_dotenv()
 TASK_FIELDS = {"title", "category_id", "project_id", "task_type", "date", "start_time", "end_time", "color", "completed"}
 CATEGORY_FIELDS = {"name", "color"}
 PROJECT_FIELDS = {"name", "color"}
-ROUTINE_FIELDS = {"title", "start_time", "end_time", "color", "active", "starts_on"}
+ROUTINE_FIELDS = {"title", "color", "active", "starts_on"}
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 TASK_SELECT = "id,title,category_id,project_id,task_type,date,start_time,end_time,color,completed"
 CATEGORY_SELECT = "id,name,color"
 PROJECT_SELECT = "id,name,color,created_at,updated_at"
-ROUTINE_SELECT = "id,title,start_time,end_time,color,active,created_at,updated_at"
+ROUTINE_SELECT = "id,title,color,active,created_at,updated_at"
 PERIOD_SELECT = "id,routine_id,starts_on,ends_on"
-COMPLETION_SELECT = "routine_id,occurrence_date,completed"
 
 _auth_client = None
 _auth_cache = OrderedDict()
@@ -130,7 +130,11 @@ def require_user(view):
 
 
 def _json_body(allowed_fields: set[str]):
-    body = request.get_json(silent=True) or {}
+    body = request.get_json(silent=True)
+    if body is None:
+        body = {}
+    if not isinstance(body, dict):
+        return None, {"error": "A JSON object is required"}
     unknown = set(body) - allowed_fields
     if unknown:
         return None, {"error": f"Unsupported fields: {', '.join(sorted(unknown))}"}
@@ -173,6 +177,8 @@ def _task_payload(required_title: bool = False):
     body, error = _json_body(TASK_FIELDS)
     if error:
         return None, error
+    if "task_type" in body and body["task_type"] not in ("daily", "project"):
+        return None, {"error": "Use /api/routines for daily habits"}
     if required_title and not str(body.get("title", "")).strip():
         return None, {"error": "title is required"}
     if "title" in body:
@@ -210,7 +216,7 @@ def _routine_payload(required_title: bool = False):
     body, error = _json_body(ROUTINE_FIELDS)
     if error:
         return None, error
-    if required_title and not str(body.get("title", "")).strip():
+    if (required_title or "title" in body) and (not isinstance(body.get("title"), str) or not body["title"].strip()):
         return None, {"error": "title is required"}
     if "title" in body:
         body["title"] = str(body["title"]).strip()
@@ -255,7 +261,7 @@ def _optional_task_range():
 
 
 def _task_query(start_date=None, end_date=None):
-    query = g.supabase.schema("Task").table("tasks").select(TASK_SELECT)
+    query = g.supabase.schema("Task").table("tasks").select(TASK_SELECT).neq("task_type", "routine")
     if start_date:
         query = query.gte("date", start_date.isoformat())
     if end_date:
@@ -271,39 +277,23 @@ def _project_query():
     return g.supabase.schema("Task").table("projects").select(PROJECT_SELECT).order("name")
 
 
-def _routine_query():
-    return g.supabase.schema("Task").table("routine").select(ROUTINE_SELECT).order("created_at")
+def _routine_day():
+    timezone = os.environ.get("APP_TIMEZONE", "Europe/Madrid")
+    now = datetime.now(ZoneInfo(timezone))
+    tomorrow = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), now.tzinfo)
+    return now.date(), timezone, tomorrow.isoformat()
 
 
-def _routine_occurrence_data(routines, start_date, end_date):
-    routine_ids = {routine["id"] for routine in routines}
-    if not routine_ids:
-        return []
-    periods = g.supabase.schema("Task").table("routine_period").select(PERIOD_SELECT).in_("routine_id", list(routine_ids)).lte("starts_on", end_date.isoformat()).or_(f"ends_on.is.null,ends_on.gte.{start_date.isoformat()}").execute().data or []
-    completions = g.supabase.schema("Task").table("routine_completion").select(COMPLETION_SELECT).in_("routine_id", list(routine_ids)).gte("occurrence_date", start_date.isoformat()).lte("occurrence_date", end_date.isoformat()).execute().data or []
-    return _routine_occurrences(routines, periods, completions, start_date, end_date)
+def _routine_summaries(today, routine_id=None):
+    query = g.supabase.schema("Task").rpc("routine_summaries", {"p_today": today.isoformat()})
+    if routine_id:
+        query = query.eq("id", routine_id)
+    return query.execute().data or []
 
 
-def _routine_occurrences(routines, periods, completions, start_date, end_date):
-    periods_by_routine = {}
-    for period in periods:
-        periods_by_routine.setdefault(period["routine_id"], []).append(period)
-    completed = {(item["routine_id"], item["occurrence_date"]): item["completed"] for item in completions}
-    occurrences = []
-    for routine in routines:
-        for period in periods_by_routine.get(routine["id"], []):
-            period_start = max(start_date, date.fromisoformat(period["starts_on"]))
-            period_end = min(end_date, date.fromisoformat(period["ends_on"]) if period["ends_on"] else end_date)
-            if not routine.get("active", True):
-                period_end = min(period_end, date.today() - timedelta(days=1))
-            if period_start > period_end:
-                continue
-            current = period_start
-            while current <= period_end:
-                occurrence_date = current.isoformat()
-                occurrences.append({"id": f"{routine['id']}:{occurrence_date}", "routine_id": routine["id"], "title": routine["title"], "category_id": None, "project_id": None, "task_type": "routine", "date": occurrence_date, "start_time": routine["start_time"], "end_time": routine["end_time"], "color": routine["color"], "completed": completed.get((routine["id"], occurrence_date), False)})
-                current += timedelta(days=1)
-    return occurrences
+def _routine_snapshot():
+    today, timezone, next_day_at = _routine_day()
+    return {"date": today.isoformat(), "timezone": timezone, "next_day_at": next_day_at, "routines": _routine_summaries(today)}
 
 
 def create_app():
@@ -441,8 +431,7 @@ def create_app():
     @app.get("/api/routines")
     @require_user
     def list_routines():
-        routines = _routine_query().execute()
-        return jsonify({"routines": routines.data or []})
+        return jsonify(_routine_snapshot())
 
     @app.post("/api/routines")
     @require_user
@@ -450,14 +439,15 @@ def create_app():
         payload, error = _routine_payload(required_title=True)
         if error:
             return jsonify(error), 400
-        starts_on = payload.pop("starts_on", date.today().isoformat())
+        today, _, _ = _routine_day()
+        starts_on = payload.pop("starts_on", today.isoformat())
         active = payload.get("active", True)
         payload["user_id"] = str(g.user.id)
         result = g.supabase.schema("Task").table("routine").insert(payload).execute()
         routine = result.data[0]
         if active:
             g.supabase.schema("Task").table("routine_period").insert({"routine_id": routine["id"], "user_id": str(g.user.id), "starts_on": starts_on, "ends_on": None}).execute()
-        return jsonify(routine), 201
+        return jsonify(_routine_summaries(today, routine["id"])[0]), 201
 
     @app.patch("/api/routines/<routine_id>")
     @require_user
@@ -471,33 +461,24 @@ def create_app():
         if not current_result.data:
             return jsonify({"error": "Routine not found"}), 404
         current = current_result.data[0]
-        active_change = payload.pop("active", None)
-        starts_on = payload.pop("starts_on", None)
-        if starts_on:
-            payload["active"] = current["active"] if active_change is None else active_change
+        today, _, _ = _routine_day()
+        payload.pop("starts_on", None)
+        active_change = payload.get("active", current["active"])
         if payload:
-            result = g.supabase.schema("Task").table("routine").update(payload).eq("id", routine_id).execute()
-            routine = result.data[0]
-        else:
-            routine = current
-        if active_change is not None and active_change != current["active"]:
-            today = date.today().isoformat()
-            period_result = g.supabase.schema("Task").table("routine_period").select(PERIOD_SELECT).eq("routine_id", routine_id).or_(f"ends_on.is.null,ends_on.eq.{today}").execute()
-            matching_periods = period_result.data or []
+            g.supabase.schema("Task").table("routine").update(payload).eq("id", routine_id).execute()
+        if active_change != current["active"]:
+            periods = g.supabase.schema("Task").table("routine_period").select(PERIOD_SELECT).eq("routine_id", routine_id).is_("ends_on", "null").execute().data or []
             if active_change:
-                open_period = next((period for period in matching_periods if period["ends_on"] is None), None)
-                same_day = next((period for period in matching_periods if period["ends_on"] == today), None)
-                if not open_period:
-                    if same_day:
-                        g.supabase.schema("Task").table("routine_period").update({"ends_on": None}).eq("id", same_day["id"]).execute()
-                    else:
-                        g.supabase.schema("Task").table("routine_period").insert({"routine_id": routine_id, "user_id": str(g.user.id), "starts_on": today, "ends_on": None}).execute()
+                if not periods:
+                    g.supabase.schema("Task").table("routine_period").insert({"routine_id": routine_id, "user_id": str(g.user.id), "starts_on": today.isoformat(), "ends_on": None}).execute()
             else:
-                open_period = next((period for period in matching_periods if period["ends_on"] is None), None)
-                if open_period:
-                    g.supabase.schema("Task").table("routine_period").update({"ends_on": (date.today() - timedelta(days=1)).isoformat()}).eq("id", open_period["id"]).execute()
-            routine["active"] = active_change
-        return jsonify(routine)
+                for period in periods:
+                    query = g.supabase.schema("Task").table("routine_period")
+                    if date.fromisoformat(period["starts_on"]) >= today:
+                        query.delete().eq("id", period["id"]).execute()
+                    else:
+                        query.update({"ends_on": (today - timedelta(days=1)).isoformat()}).eq("id", period["id"]).execute()
+        return jsonify(_routine_summaries(today, routine_id)[0])
 
     @app.delete("/api/routines/<routine_id>")
     @require_user
@@ -507,32 +488,24 @@ def create_app():
             return jsonify({"error": "Routine not found"}), 404
         return jsonify({"deleted": routine_id})
 
-    @app.get("/api/routines/occurrences")
+    @app.patch("/api/routines/<routine_id>/completion")
     @require_user
-    def list_routine_occurrences():
-        start_date, end_date, error = _date_range()
-        if error:
-            return jsonify(error), 400
-        routines = _routine_query().execute().data or []
-        return jsonify(_routine_occurrence_data(routines, start_date, end_date))
-
-    @app.patch("/api/routines/<routine_id>/occurrences/<occurrence_date>")
-    @require_user
-    def update_routine_occurrence(routine_id, occurrence_date):
+    def update_routine_completion(routine_id):
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or set(payload) != {"date", "completed"} or not isinstance(payload["completed"], bool):
+            return jsonify({"error": "date and boolean completed are required"}), 400
         try:
-            target_date = date.fromisoformat(occurrence_date)
-        except ValueError:
-            return jsonify({"error": "occurrence_date must be an ISO date"}), 400
-        payload = request.get_json(silent=True) or {}
-        if set(payload) != {"completed"} or not isinstance(payload["completed"], bool):
-            return jsonify({"error": "completed must be boolean"}), 400
-        routines = g.supabase.schema("Task").table("routine").select(ROUTINE_SELECT).eq("id", routine_id).execute().data or []
-        periods = g.supabase.schema("Task").table("routine_period").select(PERIOD_SELECT).eq("routine_id", routine_id).lte("starts_on", occurrence_date).execute().data or []
-        if not routines or not any(not period["ends_on"] or date.fromisoformat(period["ends_on"]) >= target_date for period in periods):
-            return jsonify({"error": "Routine occurrence not found"}), 404
-        g.supabase.schema("Task").table("routine_completion").upsert({"routine_id": routine_id, "user_id": str(g.user.id), "occurrence_date": occurrence_date, "completed": payload["completed"]}, on_conflict="routine_id,occurrence_date").execute()
-        routine = routines[0]
-        return jsonify({"id": f"{routine_id}:{occurrence_date}", "routine_id": routine_id, "title": routine["title"], "category_id": None, "project_id": None, "task_type": "routine", "date": occurrence_date, "start_time": routine["start_time"], "end_time": routine["end_time"], "color": routine["color"], "completed": payload["completed"]})
+            target_date = date.fromisoformat(payload["date"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "date must be an ISO date"}), 400
+        today, timezone, next_day_at = _routine_day()
+        if target_date != today:
+            return jsonify({"error": "El día ha cambiado. Actualiza las rutinas.", "date": today.isoformat()}), 409
+        routines = _routine_summaries(today, routine_id)
+        if not routines or not routines[0]["due_today"]:
+            return jsonify({"error": "Routine is not due today"}), 404
+        g.supabase.schema("Task").table("routine_completion").upsert({"routine_id": routine_id, "user_id": str(g.user.id), "occurrence_date": today.isoformat(), "completed": payload["completed"]}, on_conflict="routine_id,occurrence_date").execute()
+        return jsonify({"date": today.isoformat(), "timezone": timezone, "next_day_at": next_day_at, "routine": _routine_summaries(today, routine_id)[0]})
 
     @app.get("/api/calendar")
     @require_user
@@ -541,8 +514,7 @@ def create_app():
         if error:
             return jsonify(error), 400
         tasks = _task_query(start_date, end_date).execute()
-        routines = _routine_query().execute().data or []
-        return jsonify({"tasks": tasks.data or [], "routine_occurrences": _routine_occurrence_data(routines, start_date, end_date)})
+        return jsonify({"tasks": tasks.data or []})
 
     @app.get("/api/bootstrap")
     @require_user
@@ -553,9 +525,7 @@ def create_app():
         categories = _category_query().execute()
         projects = _project_query().execute()
         tasks = _task_query(start_date, end_date).execute()
-        routines = _routine_query().execute()
-        routine_rows = routines.data or []
-        return jsonify({"categories": categories.data or [], "projects": projects.data or [], "routines": routine_rows, "tasks": tasks.data or [], "routine_occurrences": _routine_occurrence_data(routine_rows, start_date, end_date)})
+        return jsonify({"categories": categories.data or [], "projects": projects.data or [], "tasks": tasks.data or []})
 
     @app.get("/api/tasks")
     @require_user
