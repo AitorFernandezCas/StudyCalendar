@@ -9,9 +9,24 @@ StudyCalendar is a Vite + React + TypeScript frontend backed by a Flask API and 
 - `src/lib/api.ts` is the typed client for Flask endpoints; `src/lib/supabase.ts` handles Supabase Auth and persistent sessions.
 - `src/lib/useRoutineHabits.ts` loads daily habit summaries independently, synchronizes completion, and refreshes at midnight and on focus.
 - `src/styles.css` contains the shared responsive UI styles.
-- `backend/app.py` provides the Flask app factory, bearer-token validation, CORS, task/category/project/routine endpoints, and daily habit completion. `backend/wsgi.py` is the production entry point.
-- `backend/test_app.py` contains Flask API tests; `backend/test_routine_streaks.sql` verifies streak calculations and user isolation against PostgreSQL inside a rolled-back transaction.
+- `backend/app.py` is a thin development entry point and re-exports `app` and `create_app`; `backend/wsgi.py` remains the production entry point.
+- `backend/studycalendar/` is a hexagonal modular monolith. `tasks`, `categories`, `projects`, and `routines` contain domain models, application services, repository ports, and HTTP/Supabase adapters. `queries` composes calendar/bootstrap reads. `factory.py` wires per-application dependencies, Blueprints, CORS, and error/timing handlers.
+- `backend/studycalendar/dependencies.py` defines injected authentication, scoped repository providers, and clocks. Domain/application/ports must not import Flask, Supabase, HTTP adapters, or SDK query objects. Pass the authenticated user explicitly. Keep sparse PATCH fields distinct from explicit null.
+- `backend/studycalendar/shared/supabase_runtime.py` owns per-application/per-process authentication and client LRU caches (128 entries), with token-specific credentials and leased connections. Configure schema `Task` at client creation; do not call SDK `schema()` per query, which creates unmanaged HTTP clients in the installed version. Never close a client while an active request leases it.
+- `backend/test_app.py` preserves HTTP regression scenarios; `backend/test_hexagonal.py` covers pure use cases, adapters, concurrency, cache expiry, and dependency boundaries. `backend/test_load_test.py` covers benchmarking and the disposable UI fixture. `backend/test_routine_streaks.sql` verifies streak calculations and user isolation against PostgreSQL inside a rolled-back transaction.
+- `backend/README.md` documents architecture, adapter substitution, Linux WSGI workers, and manual UI checks. `backend/ui_smoke.py` is a localhost-only disposable memory fixture, never a production entry point. `backend/load_test.py` benchmarks authenticated read endpoints without logging credentials.
 - `supabase/migrations/` contains versioned SQL migrations for the quoted `Task` schema. `dist/` and `node_modules/` are generated and must not be edited or committed.
+
+### Backend Dependency Rules
+
+- Keep dependencies pointing inward: HTTP and persistence adapters depend on application services and domain models. Domain, application, and ports must remain importable and testable without Flask, Supabase, PostgREST, or a network connection. Core code may import `shared.domain` and `shared.ports`, not shared HTTP/persistence/runtime adapters.
+- Add features within their module: domain models and validation in `domain.py`, consumer-owned interfaces in `ports.py`, orchestration in `application.py`, and transport/persistence implementations in `adapters/`. Compose cross-feature calendar/bootstrap queries through existing repository ports. Avoid generic repositories and framework-based dependency injection.
+- Wire dependencies and register Blueprints in `factory.create_app(settings=None, dependencies=None)`. Keep `Settings` immutable and load environment variables only in configuration/entry points. Each application owns its dependencies; importing or constructing the app must not open external connections, and health checks must work without Supabase credentials.
+- HTTP handlers parse requests, invoke services, and serialize results. Keep `request`, `g`, SDK response/query objects, and HTTP status mapping outside the core. Repository ports return domain dataclasses; preserve existing JSON fields, status codes, messages, and sparse PATCH semantics.
+- Validate bearer tokens through the injected authenticator. Pass `User` explicitly to services and create scoped repository instances for each request. Do not mutate a shared client's session or authorization headers. JWT expiry decoding only bounds cache lifetime; it never authenticates a user.
+- Release repository scopes on success and failure. Retire cached connections only after their last active lease ends; do not close application-wide resources in request teardown. Authentication TTL defaults to 30 seconds and must not outlive JWT expiry.
+- Capture one authoritative `Day` from the injected clock for each routine operation. Keep streak aggregation behind `RoutineSummaries` and in the existing SQL function; preserve RLS, periods, identifiers, and completion history. The refactor does not add transaction guarantees to operations with multiple writes.
+- Test use cases with memory repositories and fixed clocks, HTTP contracts with injected dependencies, and Supabase adapters with the installed SDK and simulated transport. Preserve the dependency-boundary, concurrency, cache-expiry, and resource-lifecycle checks; do not restore module-global test monkeypatches.
 
 ## Data Model & Behavior
 
@@ -44,7 +59,9 @@ From the repository root:
 - `npm run preview` serves the production build locally.
 - `python -m venv backend/.venv` and `pip install -r backend/requirements.txt` prepare the Flask environment.
 - `python backend/app.py` starts the API on `http://localhost:5000`.
-- `pytest backend/test_app.py -q` runs authentication, habit API, completion, calendar exclusion, and timezone tests.
+- `python -m pytest backend -q` runs the full HTTP, use-case, adapter, runtime, architecture, and load-script suite. `pytest backend/test_app.py -q` remains available for the original regression scenarios.
+- `python backend/ui_smoke.py` starts the disposable memory API on `127.0.0.1:5001`. Follow `backend/README.md` to run a separate Vite instance on port 5180 with fake authentication. Never deploy this fixture or point its checks at production data.
+- `python backend/load_test.py --help` describes the read-only benchmark. Supply a test URL and external access tokens; defaults are 60 seconds at concurrency 1, 10, and 25. Keep credentials and generated `*.local` reports out of Git. Compare identical data, date ranges, intervals, and server configurations; memory-fixture or Flask development-server results do not establish production capacity.
 - `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_routine_streaks.sql` (PowerShell) verifies streaks, pauses/reactivation, future dates, more than 1,000 completions, and RLS isolation. Use a migrated test database and an administrative connection able to create temporary user fixtures and impersonate authenticated users; the script rolls back its fixture changes.
 
 ## Style, Testing & Security

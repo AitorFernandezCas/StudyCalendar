@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 import json
 from types import SimpleNamespace
 
@@ -7,7 +7,11 @@ import pytest
 from postgrest import SyncPostgrestClient
 
 from app import app
-import app as app_module
+from app import create_app
+from studycalendar.config import Settings
+from studycalendar.dependencies import Dependencies
+from studycalendar.shared.clock import SystemClock
+from tests_support import DatabaseProvider, FixedClock, FixedAuth
 
 
 @pytest.fixture
@@ -24,9 +28,8 @@ def authenticated_projects_client(monkeypatch):
     http_client = httpx.Client(transport=httpx.MockTransport(respond), trust_env=False)
     database = SyncPostgrestClient('https://example.invalid/rest/v1', schema='Task', http_client=http_client)
     monkeypatch.setattr(database, 'schema', lambda name: database)
-    monkeypatch.setattr(app_module, '_authenticated_user', lambda token: SimpleNamespace(id='user-1'))
-    monkeypatch.setattr(app_module, '_client_for_token', lambda token: database)
-    yield app.test_client(), requests
+    application = create_app(Settings(), Dependencies(FixedAuth(), DatabaseProvider(database), FixedClock()))
+    yield application.test_client(), requests
     http_client.close()
 
 
@@ -59,10 +62,9 @@ def test_local_vite_cors_and_untrusted_origin():
     assert 'Access-Control-Allow-Origin' not in response.headers
 
 
-def test_api_exceptions_return_json(monkeypatch):
-    monkeypatch.setattr(app_module, '_authenticated_user', lambda token: SimpleNamespace(id='user-1'))
-    monkeypatch.setattr(app_module, '_client_for_token', lambda token: SimpleNamespace())
-    response = app.test_client().get('/api/projects', headers={'Authorization': 'Bearer test-token'})
+def test_api_exceptions_return_json():
+    application = create_app(Settings(), Dependencies(FixedAuth(), DatabaseProvider(SimpleNamespace()), FixedClock()))
+    response = application.test_client().get('/api/projects', headers={'Authorization': 'Bearer test-token'})
     assert response.status_code == 500
     assert response.is_json
     assert 'error' in response.json
@@ -149,10 +151,8 @@ def authenticated_routines_client(monkeypatch):
     http_client = httpx.Client(transport=httpx.MockTransport(respond), trust_env=False)
     database = SyncPostgrestClient('https://example.invalid/rest/v1', schema='Task', http_client=http_client)
     monkeypatch.setattr(database, 'schema', lambda name: database)
-    monkeypatch.setattr(app_module, '_authenticated_user', lambda token: SimpleNamespace(id='user-1'))
-    monkeypatch.setattr(app_module, '_client_for_token', lambda token: database)
-    monkeypatch.setattr(app_module, '_routine_day', lambda: (today, 'Europe/Madrid', '2026-10-06T00:00:00+02:00'))
-    yield app.test_client(), requests, row, periods
+    application = create_app(Settings(), Dependencies(FixedAuth(), DatabaseProvider(database), FixedClock(today)))
+    yield application.test_client(), requests, row, periods
     http_client.close()
 
 
@@ -265,7 +265,7 @@ def test_calendar_and_bootstrap_do_not_load_routines(authenticated_projects_clie
         assert not any('routine' in request.url.path for request in requests)
 
 
-def test_day_boundary_handles_madrid_dst(monkeypatch):
+def test_day_boundary_handles_madrid_dst():
     from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 
@@ -274,9 +274,8 @@ def test_day_boundary_handles_madrid_dst(monkeypatch):
         def now(cls, tz=None):
             return datetime(2026, 10, 25, 0, 0, tzinfo=tz)
 
-    monkeypatch.setattr(app_module, 'datetime', FrozenDateTime)
-    monkeypatch.setenv('APP_TIMEZONE', 'Europe/Madrid')
-    today, tz, next_day = app_module._routine_day()
+    day = SystemClock('Europe/Madrid', now=FrozenDateTime.now).day()
+    today, tz, next_day = day.date, day.timezone, day.next_day_at
     assert today == date(2026, 10, 25)
     assert tz == 'Europe/Madrid'
     assert next_day == '2026-10-26T00:00:00+01:00'
