@@ -16,7 +16,7 @@ const apiUrl = (import.meta.env.VITE_API_URL as string | undefined || 'http://lo
 
 async function request<T>(path: string, session: Session, options?: RequestInit): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...options?.headers } })
-  const body = await response.json().catch(() => ({}))
+  const body = await response.json().catch(() => { throw new ApiError('El servidor todavía no está disponible. Inténtalo de nuevo.', response.status) })
   if (!response.ok) throw new ApiError(body.error || 'No se pudo completar la operación', response.status)
   return body as T
 }

@@ -1,0 +1,49 @@
+# No database or paid resources: persistence and Auth remain in Supabase Free.
+services:
+  - type: web
+    name: studycalendar-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: python -m pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn wsgi:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: APP_TIMEZONE
+        value: Europe/Madrid
+      - key: AUTH_CACHE_TTL_SECONDS
+        value: '30'
+
+  - type: web
+    name: studycalendar
+    runtime: static
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci && npm run build:production
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
