@@ -109,7 +109,9 @@ Cuatro procesos son un punto inicial para medir, no una capacidad garantizada.
 Las cachés son locales a cada proceso y no almacenan estado de negocio.
 Mantener un proxy apropiado delante del servidor y configurar el origen permitido.
 Gunicorn no se ejecuta en Windows nativo; el servidor de Flask sigue siendo
-la entrada de desarrollo. El proveedor de hosting queda pendiente de elección.
+la entrada de desarrollo. Para Render Free, ejecutar desde la raíz
+`cd backend && gunicorn wsgi:app`: la configuración local usa un proceso,
+cuatro hilos y el puerto `PORT`. Ver [la guía de publicación](../DEPLOYMENT.md).
 
 ## Carga de solo lectura
 

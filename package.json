@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:production": "node scripts/validate-production-env.mjs && npm run build",
+    "test:deployment": "node --test scripts/production-env.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
