@@ -163,5 +163,29 @@ incluye copias automáticas descargables.
 
 ## Estado de entrega
 
-Las URLs finales y los resultados de CI/CD se registrarán al verificar el hosting.
-Una configuración en el repositorio no demuestra que los servicios estén publicados.
+Publicado el 7 de octubre de 2026:
+
+- Aplicación: https://studycalendar.onrender.com
+- API: https://studycalendar-api.onrender.com
+- Salud: https://studycalendar-api.onrender.com/api/health
+- Backend Render: `srv-db2nj4btqb8s73e5hnn0`, Python, Frankfurt, Free.
+- Frontend Render: `srv-db2nmie0tbcc73ev793g`, sitio estático gratuito.
+- Configuración incorporada mediante [PR #9](https://github.com/AitorFernandezCas/StudyCalendar/pull/9).
+- [CI de la implementación](https://github.com/AitorFernandezCas/StudyCalendar/actions/runs/37541941344):
+  build, cuatro comprobaciones de entorno, 96 pruebas backend y smoke WSGI satisfactorios.
+- Comprobación pública: salud `200`, tareas sin token `401`, CORS permitido solo
+  para `https://studycalendar.onrender.com`, las cuatro rutas SPA `200` y header `nosniff`.
+- Aviso a los diez segundos y recuperación tras un error comprobados con la fixture
+  local desechable; no se reenvían escrituras.
+- [Prueba de CI negativa](https://github.com/AitorFernandezCas/StudyCalendar/actions/runs/37544019087):
+  una URL local en la configuración ficticia produjo fallo del build y del check
+  agregado. Render conservó el commit anterior mientras estaba enlazado a la rama
+  temporal de prueba. [PR de verificación #10](https://github.com/AitorFernandezCas/StudyCalendar/pull/10).
+- [Prueba corregida](https://github.com/AitorFernandezCas/StudyCalendar/actions/runs/37544283432):
+  CI verde y publicación automática de `01229fb`, con motivo `Auto-Deploy` en Render.
+  La rama del frontend se restauró a `main` y el PR temporal se cerró sin fusionar.
+- [Captura del frontend publicado](docs/deployment-published.jpg).
+
+El historial de pruebas no implica un SLA. La suspensión real por inactividad,
+el acceso con la cuenta del usuario y las operaciones autenticadas se verifican
+por separado durante la puesta en marcha; los checks públicos no usan una sesión.
