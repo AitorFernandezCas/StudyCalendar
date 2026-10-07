@@ -185,3 +185,180 @@
 .read-error-banner button{flex-shrink:0;padding:8px 12px;border:1px solid currentColor;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
 .read-error-banner button:disabled{opacity:.5;cursor:wait}
 @media(max-width:650px){.read-error-banner{align-items:flex-start;flex-direction:column}}
+
+/* Keep wide timelines inside the calendar instead of clipping the page. */
+.calendar{min-width:0;max-width:100%}
+.week-calendar{overflow-x:auto}
+.week-calendar .calendar-head,.week-calendar .calendar-body{min-width:850px}
+.month-weekdays,.month-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
+.overview-section,.project-card{min-width:0}
+.overview-category{max-width:100px;overflow:hidden;text-overflow:ellipsis}
+.overview-task-main small{line-height:1.5;overflow-wrap:anywhere}
+.project-title{flex:1}
+.project-card-actions{flex:none}
+.mobile-navigation,.mobile-week-calendar,.mobile-account{display:none}
+.modal-backdrop{z-index:20;overflow-y:auto}
+.modal{max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
+.modal-head{gap:12px}
+.modal-head>div{min-width:0}
+.modal-head>button{flex:none}
+.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.form-grid>label,.time-picker-field{min-width:0}
+
+@media(max-width:1050px){
+  .overview-sections,.routine-sections,.projects-view .project-list{grid-template-columns:minmax(0,1fr)}
+}
+
+@media(max-width:650px){
+  .main{
+    padding-top:20px;
+    padding-bottom:calc(92px + env(safe-area-inset-bottom));
+  }
+  .sticky-header{align-items:center;gap:12px}
+  .sticky-header h1{font-size:clamp(22px,6.5vw,30px);line-height:1.2;overflow-wrap:anywhere}
+  .sticky-header.compact h1{font-size:22px}
+  .subtitle{font-size:13px;line-height:1.5}
+  .sticky-header .subtitle{max-height:none}
+  .header-actions{gap:6px}
+  .mobile-settings-button,.add-button,.sticky-header.compact .add-button{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:44px;
+    height:44px;
+    padding:0;
+  }
+  .mobile-navigation{
+    position:fixed;
+    inset:auto 0 0;
+    z-index:10;
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+    border-top:1px solid #e5e7ed;
+    background:#fff;
+    box-shadow:0 -4px 20px #252d3d08;
+  }
+  .mobile-navigation button{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:5px;
+    min-height:52px;
+    min-width:0;
+    padding:6px 2px;
+    border:0;
+    border-radius:9px;
+    background:transparent;
+    color:#747b89;
+    font:500 11px 'DM Sans',sans-serif;
+    cursor:pointer;
+  }
+  .mobile-navigation button.active{background:#f0edff;color:#684df0}
+  .mobile-navigation button:focus-visible{outline:2px solid #7056ed;outline-offset:-2px}
+  .mobile-account{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:20px;
+    font-size:13px;
+    color:#677080;
+  }
+  .mobile-account span{min-width:0;overflow-wrap:anywhere}
+  .mobile-account button{min-height:44px;border:0;background:transparent;color:#7056ed;font:600 13px 'DM Sans',sans-serif;cursor:pointer}
+  .toolbar{margin:24px 0 16px;gap:14px}
+  .week-nav{width:100%;flex-wrap:wrap;gap:8px}
+  .week-nav button{min-width:44px;height:44px;font-size:14px}
+  .week-nav strong{flex-basis:100%;margin:4px 0 0;font-size:14px;line-height:1.5}
+  .view-tools{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px}
+  .view-tools select{min-width:0;width:100%;margin:0;padding:0 8px;font-size:16px}
+  .view-tools select,.view-btn{height:44px}
+  .view-btn{padding:0 10px;font-size:12px;white-space:nowrap}
+  .week-calendar{display:none}
+  .mobile-week-calendar{display:grid;gap:12px}
+  .agenda-day{min-width:0;padding:14px;background:#fff;border:1px solid #e5e7ed;border-radius:12px}
+  .agenda-day.today{border-color:#cfc3ff;background:#fcfbff}
+  .agenda-day-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .agenda-day-head h2{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0;font-size:14px;line-height:1.5;text-transform:capitalize}
+  .agenda-day-head h2 span{padding:2px 7px;border-radius:12px;background:#f0edff;color:#684df0;font-size:11px}
+  .agenda-day-head>button{flex:none;width:44px;height:44px;border:1px solid #ddd7ff;border-radius:9px;background:#f5f2ff;color:#7056ed;font-size:22px;cursor:pointer}
+  .agenda-tasks{display:grid;gap:10px;margin-top:10px}
+  .agenda-empty{margin:6px 0 0;color:#8f97a5;font-size:12px}
+  .agenda-tasks .task-card{cursor:pointer;padding:12px;min-height:0}
+  .agenda-tasks .task-card:hover{transform:none}
+  .agenda-tasks .task-title{font-size:14px;overflow-wrap:anywhere}
+  .agenda-tasks .task-time{font-size:12px}
+  .agenda-tasks .task-meta{gap:8px}
+  .agenda-tasks .task-meta>span{min-width:0;font-size:12px;overflow-wrap:anywhere}
+  .agenda-tasks .task-actions{flex:none}
+  .agenda-tasks .task-actions button{width:44px;height:44px}
+  .agenda-tasks .delete-task{opacity:1!important}
+  .month-calendar{width:100%}
+  .month-weekdays div{padding:12px 1px;font-size:9px;letter-spacing:0;text-align:center}
+  .month-grid{grid-auto-rows:minmax(104px,auto);min-height:624px}
+  .month-day{padding:3px}
+  .month-day-number{display:block;float:none;width:100%;min-height:36px;padding:4px 0;border-radius:7px;font-size:13px}
+  .month-tasks{gap:4px;padding-top:4px}
+  .month-task{min-height:28px;padding:4px 2px;border-left-width:2px;font-size:10px}
+  .month-task span{display:none}
+  .month-more{padding:0;font-size:9px}
+  .overview-sections,.routine-sections{gap:12px}
+  .task-overview{padding-top:20px}
+  .overview-section{padding:14px}
+  .overview-section-head{flex-wrap:wrap;gap:8px}
+  .overview-section-head h3{font-size:16px}
+  .new-project-button{min-height:44px;padding:8px 10px;font-size:12px}
+  .projects-toolbar{align-items:stretch}
+  .back-to-overview{min-height:44px;font-size:13px;text-align:left}
+  .overview-task{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;padding:12px}
+  .overview-task-main strong{font-size:14px;white-space:normal;overflow-wrap:anywhere;line-height:1.4}
+  .overview-task-main small{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+  .overview-category{grid-column:1;grid-row:2;max-width:none;font-size:11px;white-space:normal;overflow-wrap:anywhere}
+  .overview-task .task-actions{grid-column:2;grid-row:1 / span 2;gap:2px}
+  .overview-task .task-actions button{width:44px;height:44px;padding:0}
+  .overview-task .delete-task{opacity:1!important}
+  .projects-view .overview-category{display:block;max-width:none}
+  .project-card-head{flex-wrap:wrap;gap:4px}
+  .project-title{flex:1;min-width:100px}
+  .project-title h4{white-space:normal;overflow-wrap:anywhere;font-size:14px}
+  .project-card-actions{flex:none}
+  .project-card-actions button{width:44px;height:44px;padding:0;font-size:18px}
+  .daily-habit .overview-task-main strong,.routine-definition .overview-task-main strong{font-size:14px}
+  .habit-completion{width:44px;height:44px}
+  .routine-status{grid-column:1;grid-row:2;font-size:12px}
+  .routine-content{grid-column:1;min-width:0}
+  .routine-streaks{gap:4px 8px}
+  .routine-streaks>span{white-space:nowrap}
+  .settings-card{padding:16px}
+  .settings-categories li{flex-direction:column;align-items:stretch;gap:12px}
+  .settings-category-actions button{flex:1;min-height:44px;font-size:13px}
+  .modal-backdrop{padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom))}
+  .modal{padding:20px;max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}
+  .modal-head{align-items:flex-start;margin-bottom:16px}
+  .modal-head h2{font-size:24px;overflow-wrap:anywhere}
+  .modal-head>button{width:44px;height:44px}
+  .modal input,.modal select,.time-picker-trigger,.auth-card input{min-width:0;height:48px;font-size:16px}
+  .time-picker-menu button{min-height:44px;font-size:16px}
+  .color-picker{flex-wrap:wrap;gap:10px}
+  .color-picker button{width:44px;height:44px}
+  .modal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .modal-actions button{min-height:44px;padding:10px 8px;font-size:13px}
+  .auth-screen{min-height:100dvh;padding:20px 16px}
+  .auth-card{padding:24px;min-width:0}
+  .auth-brand{gap:8px;padding:0;font-size:16px}
+  .auth-brand .brand-mark{width:28px;height:28px}
+  .auth-card h1{font-size:28px;overflow-wrap:anywhere}
+  .auth-submit,.auth-switch{min-height:44px;font-size:14px}
+}
+
+@media(max-width:380px){
+  .form-grid{grid-template-columns:minmax(0,1fr);gap:0}
+  .color-picker{gap:8px}
+}
+
+@media(hover:none),(pointer:coarse){
+  .task-card .delete-task,.overview-task .delete-task{opacity:1!important}
+}
