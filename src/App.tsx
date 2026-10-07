@@ -151,6 +151,7 @@ function ProjectTaskGroups({ tasks, history, renderTask }: { tasks: Task[]; hist
 }
 
 function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onEditProject, onDeleteProject, history = false }: ProjectListProps & { history?: boolean }) {
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const projectTasks = useMemo(() => tasks.filter(task => task.taskType === 'project').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), [tasks])
   const projectById = useMemo(() => new Map(projects.map(project => [project.id, project])), [projects])
   const unassigned = projectTasks.filter(task => !task.projectId || !projectById.has(task.projectId))
@@ -159,16 +160,31 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
     {projects.length ? <div className="project-list">{projects.map(project => {
       const associated = projectTasks.filter(task => task.projectId === project.id)
       const completed = associated.filter(task => task.done).length
+      const pending = associated.length - completed
+      const expanded = !history || expandedProjects.has(project.id)
+      const contentId = 'project-content-' + project.id
       const progress = associated.length ? Math.round(completed / associated.length * 100) : 0
       return <article className="project-card" key={project.id} style={{ '--project-color': project.color } as React.CSSProperties}>
-        <div className="project-card-head"><div className="project-title"><i /><h4 title={project.name}>{project.name}</h4></div>
-          <div className="project-card-actions"><small aria-label={completed + ' de ' + associated.length + ' tareas completadas'}>{completed}/{associated.length}</small>
-            <button aria-label={'Editar ' + project.name} onClick={() => onEditProject(project)}>✎</button>
-            <button aria-label={'Eliminar ' + project.name} onClick={() => onDeleteProject(project)}>×</button>
+        {history && <h4 className="project-summary-heading"><button className="project-summary" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpandedProjects(current => {
+          const next = new Set(current)
+          if (next.has(project.id)) next.delete(project.id)
+          else next.add(project.id)
+          return next
+        })}>
+          <span className="project-title"><i aria-hidden="true" /><span className="project-name">{project.name}</span></span>
+          <span className="project-pending">{pending} {pending === 1 ? 'pendiente' : 'pendientes'}</span>
+          <svg className="project-chevron" aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 8 4 4 4-4" /></svg>
+        </button></h4>}
+        <div id={contentId} hidden={!expanded}>
+          <div className="project-card-head">{!history && <div className="project-title"><i /><h4 title={project.name}>{project.name}</h4></div>}
+            <div className="project-card-actions"><small aria-label={completed + ' de ' + associated.length + ' tareas completadas'}>{completed}/{associated.length}</small>
+              <button aria-label={'Editar ' + project.name} onClick={() => onEditProject(project)}>✎</button>
+              <button aria-label={'Eliminar ' + project.name} onClick={() => onDeleteProject(project)}>×</button>
+            </div>
           </div>
+          <div className="project-progress" role="progressbar" aria-label={'Progreso de ' + project.name} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: progress + '%' }} /></div>
+          <ProjectTaskGroups tasks={associated} history={history} renderTask={renderTask} />
         </div>
-        <div className="project-progress" role="progressbar" aria-label={'Progreso de ' + project.name} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: progress + '%' }} /></div>
-        <ProjectTaskGroups tasks={associated} history={history} renderTask={renderTask} />
       </article>
     })}</div> : <p className="overview-empty">Crea tu primer proyecto para empezar a organizar sus tareas.</p>}
     {unassigned.some(task => history || !task.done) && <section className="unassigned-project"><h4>Sin proyecto</h4><ProjectTaskGroups tasks={unassigned} history={history} renderTask={renderTask} /></section>}
@@ -178,7 +194,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
 function ProjectsView({ onBack, ...props }: ProjectListProps & { onBack: () => void }) {
   return <section className="projects-view">
     <div className="projects-toolbar"><button className="back-to-overview" onClick={onBack}>← Volver a todas las tareas</button><button className="new-project-button" onClick={props.onNewProject}>＋ Nuevo proyecto</button></div>
-    <p className="projects-copy">Consulta las tareas pendientes y el historial de cada proyecto.</p>
+    <p className="projects-copy">Pulsa un proyecto para ver sus tareas pendientes y su historial.</p>
     <ProjectList {...props} history />
   </section>
 }
