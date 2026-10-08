@@ -196,3 +196,21 @@ persistencia tras recarga; separación de completadas; completar/desmarcar rutin
 contadores y rachas; pausa/reactivación, fecha inicial futura, y ausencia de horas
 y rutinas en el calendario. Los escenarios de medianoche, fecha obsoleta y fallo
 del proveedor se cubren también con reloj fijo y transporte simulado.
+
+El calendario incluye «Día», «Semana» y «Mes». «Día» muestra una columna horaria
+en escritorio y la agenda de una sola fecha en móvil. Comprobar anterior/siguiente,
+Hoy, filtros, creación para la fecha visible, edición, completado y arrastre.
+Al cambiar de vista se conserva la fecha seleccionada; las consultas diarias
+envían esa misma fecha como inicio y fin. Las rutinas siguen fuera del calendario.
+
+Las vistas horarias diaria/semanal permiten arrastrar tareas para cambiar fecha
+y horario en pasos de 15 minutos, conservando la duración. En móvil, seleccionar
+«Horario» y arrastrar el asa ↕; «Agenda» mantiene la lista. La previsualización
+no escribe hasta soltar y descarta el cambio al cancelar, salir del calendario
+o fallar el guardado. Con teclado, enfocar el asa, usar flechas (arriba/abajo para
+15 minutos, izquierda/derecha para otro día), Enter para guardar y Esc para cancelar.
+Los horarios se mantienen dentro de la fecha, sin cruzar medianoche.
+
+Ejecutar `npm run test:calendar` para verificar ajuste de slots, duración y límites;
+CI ejecuta estas pruebas con Node 24. Verificar también arrastre táctil, scroll
+automático, tareas solapadas, cancelación, fallo de PATCH y persistencia tras recarga.
