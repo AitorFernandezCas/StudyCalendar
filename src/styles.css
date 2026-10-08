@@ -432,6 +432,17 @@ button.activity-cell { cursor: pointer; }
   .activity-hint { display: block; }
 }
 .day-calendar { min-width: 0; }
+.hour-lines button { position: relative; }
+.hour-lines button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(159, 168, 186, .3);
+  filter: blur(.2px);
+  pointer-events: none;
+}
 .day-calendar .calendar-head, .day-calendar .calendar-body { grid-template-columns: 72px minmax(0, 1fr); }
 @media (max-width: 650px) {
   .day-calendar { display: none; }
