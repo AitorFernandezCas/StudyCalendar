@@ -449,3 +449,32 @@ button.activity-cell { cursor: pointer; }
   .view-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .view-tools select { grid-column: 1 / -1; }
 }
+.time-grid { min-width: 0; max-width: 100%; }
+.time-grid-scroll { position: relative; overflow: auto; max-height: min(68vh, 720px); overscroll-behavior: contain; }
+.time-grid-content { min-width: 850px; }
+.day-calendar .time-grid-content { min-width: 0; }
+.time-grid .calendar-head, .time-grid .calendar-body { width: 100%; min-width: 0; }
+.time-grid .calendar-head { position: sticky; top: 0; z-index: 5; background: #fff; }
+.time-grid .timezone, .time-grid .time-column { position: sticky; left: 0; z-index: 2; background: #fbfbfd; }
+.time-grid .timezone { z-index: 6; }
+.calendar-drag-status { margin: 0; height: 56px; overflow: auto; padding: 10px 14px; font-size: 12px; line-height: 1.5; color: #737a89; border-bottom: 1px solid #eef0f3; }
+.time-grid .task-card { user-select: none; }
+.time-grid .task-time { padding-right: 24px; }
+.calendar-task-move { position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: #f2effb; color: #7056ed; font-size: 17px; cursor: grab; touch-action: none; }
+.calendar-task-move:focus-visible { outline: 2px solid #7056ed; outline-offset: 1px; }
+.calendar-task-move:disabled { opacity: .4; cursor: default; }
+.moving-task { z-index: 4; }
+.moving-task .task-card { box-shadow: 0 5px 18px #7056ed45; opacity: .9; }
+.is-dragging, .is-dragging .task-card, .is-dragging .calendar-task-move { cursor: grabbing; }
+.mobile-calendar-layout { display: none; }
+@media (max-width: 650px) {
+  .mobile-calendar-layout { display: flex; gap: 8px; margin: 0 0 14px; }
+  .mobile-calendar-layout button { min-height: 44px; flex: 1; border: 1px solid #e3e5eb; border-radius: 8px; background: #fff; color: #677080; font: inherit; font-size: 13px; }
+  .mobile-calendar-layout button[aria-pressed="true"] { color: #7056ed; border-color: #d9d2ff; background: #f3f0ff; }
+  .mobile-week-calendar[hidden] { display: none; }
+  .time-grid.show-mobile-time-grid { display: block; }
+  .time-grid-scroll { max-height: 60vh; }
+  .calendar-drag-status { font-size: 11px; padding: 10px; }
+  .calendar-task-move { width: 44px; height: 44px; }
+  .time-grid .task-time { padding-right: 44px; }
+}

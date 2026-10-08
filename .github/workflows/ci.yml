@@ -27,6 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:deployment
+      - run: npm run test:calendar
       - run: npm run build:production
         env:
           VITE_API_URL: https://studycalendar-api.example.com
