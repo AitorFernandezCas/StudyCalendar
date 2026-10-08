@@ -431,3 +431,10 @@ button.activity-cell { cursor: pointer; }
   .activity-year button { width: 40px; height: 40px; }
   .activity-hint { display: block; }
 }
+.day-calendar { min-width: 0; }
+.day-calendar .calendar-head, .day-calendar .calendar-body { grid-template-columns: 72px minmax(0, 1fr); }
+@media (max-width: 650px) {
+  .day-calendar { display: none; }
+  .view-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .view-tools select { grid-column: 1 / -1; }
+}

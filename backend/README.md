@@ -196,3 +196,9 @@ persistencia tras recarga; separación de completadas; completar/desmarcar rutin
 contadores y rachas; pausa/reactivación, fecha inicial futura, y ausencia de horas
 y rutinas en el calendario. Los escenarios de medianoche, fecha obsoleta y fallo
 del proveedor se cubren también con reloj fijo y transporte simulado.
+
+El calendario incluye «Día», «Semana» y «Mes». «Día» muestra una columna horaria
+en escritorio y la agenda de una sola fecha en móvil. Comprobar anterior/siguiente,
+Hoy, filtros, creación para la fecha visible, edición, completado y arrastre.
+Al cambiar de vista se conserva la fecha seleccionada; las consultas diarias
+envían esa misma fecha como inicio y fin. Las rutinas siguen fuera del calendario.
