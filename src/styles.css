@@ -64,6 +64,36 @@
 .projects-view .project-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
 .projects-view .project-card{padding:18px}
 .projects-view .project-title h4{font-size:15px;white-space:normal;overflow-wrap:anywhere}
+.project-summary-heading{margin:0}
+.project-summary{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;align-items:center;gap:12px;width:100%;min-height:44px;padding:4px 0;border:0;border-radius:5px;background:transparent;color:#444d5d;text-align:left;font:inherit;cursor:pointer}
+.project-summary:hover{color:#7056ed}
+.project-summary:focus-visible{outline:2px solid #7056ed;outline-offset:4px}
+.project-summary .project-title{min-width:0}
+.project-name{font-size:15px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
+.project-pending{padding:5px 9px;border-radius:12px;background:#f1efff;color:#7056ed;font:600 11px 'DM Sans',sans-serif;white-space:nowrap}
+.project-chevron{width:20px;height:20px;transition:transform .15s ease}
+.project-summary[aria-expanded=true] .project-chevron{transform:rotate(180deg)}
+.project-card-head{justify-content:flex-end;margin-top:8px}
+.collapsible-section-head{margin-bottom:0}
+.collapsible-section-head h3{width:100%;min-width:0}
+.section-toggle{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;align-items:center;gap:8px;width:100%;min-height:44px;padding:4px 0;border:0;border-radius:5px;background:transparent;color:#424b5d;font:inherit;text-align:left;cursor:pointer}
+.overview-section-head .section-title{display:block;min-width:0;height:auto;padding:0;border-radius:0;background:transparent;color:inherit;font-size:inherit;overflow-wrap:anywhere}
+.section-count{white-space:nowrap}
+.section-toggle:focus-visible{outline:2px solid #7056ed;outline-offset:4px}
+.section-toggle:hover{color:#7056ed}
+.section-toggle[aria-expanded=true] .project-chevron{transform:rotate(180deg)}
+.section-actions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.section-actions button{min-height:44px}
+.collapsible-section{min-height:0}
+.overview-section .project-name{font-size:13px}
+.overview-section .project-summary{gap:6px}
+.routine-sections .section-count{white-space:normal;height:auto;min-height:24px;max-width:145px;text-align:center}
+@media(max-width:650px){
+  .project-summary{gap:8px;grid-template-columns:minmax(0,1fr) auto 20px}
+  .project-summary .project-title{min-width:0}
+  .project-pending{padding:5px 7px}
+}
+@media(prefers-reduced-motion:reduce){.project-chevron{transition:none}}
 .project-task-group h5{display:flex;align-items:center;gap:8px;font-size:12px;color:#626b7c;margin:16px 0 10px}
 .project-task-group h5 span{color:#969daa;font-size:11px}
 .unassigned-project h4{font-size:12px;color:#8f95a2;margin:0 0 12px}

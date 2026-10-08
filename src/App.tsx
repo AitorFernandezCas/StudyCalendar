@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { bootstrapApi, calendarApi, categoriesApi, projectsApi, routinesApi, tasksApi, type ApiCategory, type ApiProject, type ApiRoutine, type ApiTask } from './lib/api'
 import { supabase } from './lib/supabase'
@@ -134,6 +134,30 @@ type ProjectListProps = {
   onDeleteProject: (project: ApiProject) => void
 }
 
+function CollapsibleSection({ title, count, countLabel, expanded, onToggle, className, notice, children }: {
+  title: string
+  count: number | string
+  countLabel?: string
+  expanded: boolean
+  onToggle: () => void
+  className: string
+  notice?: React.ReactNode
+  children: React.ReactNode
+}) {
+  const contentId = useId()
+  return <section className={'overview-section collapsible-section ' + className}>
+    <div className="overview-section-head collapsible-section-head"><h3>
+      <button className="section-toggle" aria-expanded={expanded} aria-controls={contentId} onClick={onToggle}>
+        <span className="section-title">{title}</span>
+        <span className="section-count" aria-label={countLabel ? count + ' ' + countLabel.toLowerCase() : undefined}>{count}</span>
+        <svg className="project-chevron" aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 8 4 4 4-4" /></svg>
+      </button>
+    </h3></div>
+    {notice}
+    <div id={contentId} hidden={!expanded}>{children}</div>
+  </section>
+}
+
 function ProjectTaskGroups({ tasks, history, renderTask }: { tasks: Task[]; history: boolean; renderTask: (task: Task) => React.ReactNode }) {
   const pending = tasks.filter(task => !task.done)
   if (!history) return pending.length
@@ -151,6 +175,7 @@ function ProjectTaskGroups({ tasks, history, renderTask }: { tasks: Task[]; hist
 }
 
 function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onEditProject, onDeleteProject, history = false }: ProjectListProps & { history?: boolean }) {
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const projectTasks = useMemo(() => tasks.filter(task => task.taskType === 'project').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), [tasks])
   const projectById = useMemo(() => new Map(projects.map(project => [project.id, project])), [projects])
   const unassigned = projectTasks.filter(task => !task.projectId || !projectById.has(task.projectId))
@@ -159,16 +184,31 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
     {projects.length ? <div className="project-list">{projects.map(project => {
       const associated = projectTasks.filter(task => task.projectId === project.id)
       const completed = associated.filter(task => task.done).length
+      const pending = associated.length - completed
+      const expanded = expandedProjects.has(project.id)
+      const contentId = 'project-content-' + project.id
       const progress = associated.length ? Math.round(completed / associated.length * 100) : 0
       return <article className="project-card" key={project.id} style={{ '--project-color': project.color } as React.CSSProperties}>
-        <div className="project-card-head"><div className="project-title"><i /><h4 title={project.name}>{project.name}</h4></div>
-          <div className="project-card-actions"><small aria-label={completed + ' de ' + associated.length + ' tareas completadas'}>{completed}/{associated.length}</small>
-            <button aria-label={'Editar ' + project.name} onClick={() => onEditProject(project)}>✎</button>
-            <button aria-label={'Eliminar ' + project.name} onClick={() => onDeleteProject(project)}>×</button>
+        <h4 className="project-summary-heading"><button className="project-summary" aria-expanded={expanded} aria-controls={contentId} onClick={() => setExpandedProjects(current => {
+          const next = new Set(current)
+          if (next.has(project.id)) next.delete(project.id)
+          else next.add(project.id)
+          return next
+        })}>
+          <span className="project-title"><i aria-hidden="true" /><span className="project-name">{project.name}</span></span>
+          <span className="project-pending">{pending} {pending === 1 ? 'pendiente' : 'pendientes'}</span>
+          <svg className="project-chevron" aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m6 8 4 4 4-4" /></svg>
+        </button></h4>
+        <div id={contentId} hidden={!expanded}>
+          <div className="project-card-head">
+            <div className="project-card-actions"><small aria-label={completed + ' de ' + associated.length + ' tareas completadas'}>{completed}/{associated.length}</small>
+              <button aria-label={'Editar ' + project.name} onClick={() => onEditProject(project)}>✎</button>
+              <button aria-label={'Eliminar ' + project.name} onClick={() => onDeleteProject(project)}>×</button>
+            </div>
           </div>
+          <div className="project-progress" role="progressbar" aria-label={'Progreso de ' + project.name} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: progress + '%' }} /></div>
+          <ProjectTaskGroups tasks={associated} history={history} renderTask={renderTask} />
         </div>
-        <div className="project-progress" role="progressbar" aria-label={'Progreso de ' + project.name} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: progress + '%' }} /></div>
-        <ProjectTaskGroups tasks={associated} history={history} renderTask={renderTask} />
       </article>
     })}</div> : <p className="overview-empty">Crea tu primer proyecto para empezar a organizar sus tareas.</p>}
     {unassigned.some(task => history || !task.done) && <section className="unassigned-project"><h4>Sin proyecto</h4><ProjectTaskGroups tasks={unassigned} history={history} renderTask={renderTask} /></section>}
@@ -178,7 +218,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
 function ProjectsView({ onBack, ...props }: ProjectListProps & { onBack: () => void }) {
   return <section className="projects-view">
     <div className="projects-toolbar"><button className="back-to-overview" onClick={onBack}>← Volver a todas las tareas</button><button className="new-project-button" onClick={props.onNewProject}>＋ Nuevo proyecto</button></div>
-    <p className="projects-copy">Consulta las tareas pendientes y el historial de cada proyecto.</p>
+    <p className="projects-copy">Pulsa un proyecto para ver sus tareas pendientes y su historial.</p>
     <ProjectList {...props} history />
   </section>
 }
@@ -205,22 +245,36 @@ function RoutineList({ routines, onEditRoutine, onToggleRoutine, onDeleteRoutine
 }
 
 function RoutinesView({ onBack, habits, ...props }: RoutineListProps & { onBack: () => void; habits: ReturnType<typeof useRoutineHabits> }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<boolean>>(() => new Set())
   const rootRef = useRef<HTMLElement>(null)
   const restoredRef = useRef(false)
   useEffect(() => {
     if (props.busy) { restoredRef.current = false; return }
     if (!props.focusId || restoredRef.current) return
+    const routine = props.routines.find(item => item.id === props.focusId)
+    if (!routine) return
+    if (!expandedGroups.has(routine.active)) {
+      setExpandedGroups(current => new Set(current).add(routine.active))
+      return
+    }
     const button = [...(rootRef.current?.querySelectorAll<HTMLButtonElement>('[data-routine-toggle]') || [])].find(item => item.dataset.routineToggle === props.focusId)
     if (button) { button.focus({ preventScroll: true }); restoredRef.current = true }
-  }, [props.busy, props.focusId, props.routines])
+  }, [props.busy, props.focusId, props.routines, expandedGroups])
   return <section className="routines-view" ref={rootRef}>
     <button className="back-to-overview" onClick={onBack}>← Volver a todas las tareas</button>
     {habits.error && <RoutineLoadState habits={habits} />}
     <div className="routine-sections">{[true, false].map(active => {
       const routines = props.routines.filter(routine => routine.active === active)
-      return <section className="overview-section routine" key={String(active)}><div className="overview-section-head"><h3>{active ? 'Activas' : 'Inactivas'}</h3><span>{routines.length}</span></div>
+      const pending = routines.filter(routine => routine.due_today && !routine.completed_today).length
+      const totalLabel = routines.length + (routines.length === 1 ? ' rutina' : ' rutinas')
+      return <CollapsibleSection key={String(active)} title={active ? 'Activas' : 'Inactivas'} className="routine" count={active ? totalLabel + ' · ' + pending + (pending === 1 ? ' pendiente' : ' pendientes') : totalLabel} expanded={expandedGroups.has(active)} onToggle={() => setExpandedGroups(current => {
+        const next = new Set(current)
+        if (next.has(active)) next.delete(active)
+        else next.add(active)
+        return next
+      })}>
         {routines.length ? <RoutineList {...props} routines={routines} /> : <p className="overview-empty">{active ? 'No hay rutinas activas.' : 'No hay rutinas inactivas.'}</p>}
-      </section>
+      </CollapsibleSection>
     })}</div>
   </section>
 }
@@ -232,19 +286,28 @@ function TaskOverview({ habits, busy, onCompleteRoutine, onOpenRoutines, onOpenP
   onOpenProjects: () => void
   onOpenRoutines: () => void
 }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set())
+  const toggleSection = (section: string) => setExpandedSections(current => {
+    const next = new Set(current)
+    if (next.has(section)) next.delete(section)
+    else next.add(section)
+    return next
+  })
   const dailyTasks = useMemo(() => props.tasks.filter(task => task.taskType === 'daily' && !task.done).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), [props.tasks])
   const pendingProjects = props.tasks.filter(task => task.taskType === 'project' && !task.done).length
   return <section className="task-overview">
     <div className="overview-sections">
-      <section className="overview-section routine"><div className="overview-section-head"><h3><button className="projects-heading-button routines-heading-button" onClick={onOpenRoutines}>Rutina <span aria-hidden="true">→</span></button></h3><span aria-label="Total de rutinas activas">{habits.ready ? habits.routines.filter(routine => routine.active).length : '—'}</span></div>
+      <CollapsibleSection title="Rutina" className="routine" count={habits.ready ? habits.routines.filter(routine => routine.due_today && !routine.completed_today).length : '—'} countLabel="Rutinas pendientes de hoy" expanded={expandedSections.has('routine')} onToggle={() => toggleSection('routine')} notice={!expandedSections.has('routine') && habits.error ? <RoutineLoadState habits={habits} /> : undefined}>
+        <div className="section-actions"><button className="back-to-overview" onClick={onOpenRoutines}>Ver rutinas →</button></div>
         <DailyHabits habits={habits} busy={busy} onComplete={onCompleteRoutine} />
-      </section>
-      <section className="overview-section project"><div className="overview-section-head"><h3><button className="projects-heading-button" onClick={onOpenProjects}>Proyectos <span aria-hidden="true">→</span></button></h3>
-        <div className="overview-section-tools"><span aria-label={pendingProjects + ' tareas de proyecto pendientes'}>{pendingProjects}</span><button className="new-project-button" onClick={props.onNewProject}>＋ Nuevo proyecto</button></div>
-      </div><ProjectList {...props} /></section>
-      <section className="overview-section daily"><div className="overview-section-head"><h3>Tareas del día</h3><span>{dailyTasks.length}</span></div>
+      </CollapsibleSection>
+      <CollapsibleSection title="Proyectos" className="project" count={pendingProjects} countLabel="Tareas de proyecto pendientes" expanded={expandedSections.has('project')} onToggle={() => toggleSection('project')}>
+        <div className="section-actions"><button className="back-to-overview" onClick={onOpenProjects}>Ver proyectos →</button><button className="new-project-button" onClick={props.onNewProject}>＋ Nuevo proyecto</button></div>
+        <ProjectList {...props} />
+      </CollapsibleSection>
+      <CollapsibleSection title="Tareas del día" className="daily" count={dailyTasks.length} countLabel="Tareas del día pendientes" expanded={expandedSections.has('daily')} onToggle={() => toggleSection('daily')}>
         {dailyTasks.length ? <div className="overview-list">{dailyTasks.map(task => <OverviewTask key={task.id} task={task} categoryName={props.categoryName(task.categoryId)} onEdit={props.onEdit} onToggle={props.onToggle} onDelete={props.onDelete} />)}</div> : <p className="overview-empty">No hay tareas pendientes en esta sección.</p>}
-      </section>
+      </CollapsibleSection>
     </div>
   </section>
 }
