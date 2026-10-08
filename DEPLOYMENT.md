@@ -108,15 +108,48 @@ el registro, los redirects y el correo en un cambio separado.
 
 ## Migraciones y copias
 
-No hay migraciones nuevas en esta publicación ni comandos `db push`, resets o
-migraciones en CI/Render. La base existente ya tiene aplicada
+Las tareas de «Todo el día» requieren la nueva migración
+`20261007144641_task_all_day.sql`. No ejecutar `db push`, resets ni migraciones
+desde CI/Render. La base existente ya tiene aplicada
 `20261005133423_routine_habits_and_streaks`. Varios identificadores locales antiguos
 no coinciden con el historial remoto; no ejecutar todos los SQL otra vez.
+
+Mientras `all_day` no exista, el adaptador mantiene disponibles las lecturas de
+tareas, calendario y bootstrap y devuelve `all_day=false`. Crear o editar tareas
+con horario sigue funcionando; comprueba la columna mediante una lectura antes
+de escribir y omite el valor falso en el esquema antiguo. Solicitar `all_day=true`
+devuelve `409` con un mensaje de migración pendiente, sin enviar una escritura.
+Solo se recupera el error específico de columna ausente; los demás errores se
+conservan. No se reintentan operaciones de escritura ni se aplica SQL automáticamente.
 
 Antes de automatizar migraciones en otro cambio, comparar el historial remoto y
 los SQL locales, reconciliar las versiones sin volver a ejecutar DDL aplicado y
 probar sobre una base de prueba. Los cambios incompatibles requieren coordinar
 base de datos y backend; un rollback de código no revierte una migración.
+
+Para publicar «Todo el día»:
+
+1. Comparar el historial remoto con los SQL locales y reconciliar las versiones
+   antiguas sin volver a ejecutar DDL aplicado. Crear una copia privada siguiendo
+   las instrucciones siguientes y preparar una base de prueba aislada con el
+   esquema actual, anterior a esta nueva migración.
+2. En esa base de prueba ejecutar `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_task_all_day.sql`.
+   El script aplica el nuevo SQL dentro de una transacción, comprueba valores
+   existentes, restricciones y RLS, y revierte todos sus cambios. Nunca ejecutarlo
+   contra producción ni contra una base que ya tenga la columna `all_day`.
+3. Aplicar manualmente solo `20261007144641_task_all_day.sql` al proyecto existente
+   y registrar su versión conforme al historial reconciliado. No modifica las
+   políticas RLS ni las horas; las tareas existentes reciben `all_day=false`.
+4. Desplegar primero el backend y después el frontend tras pasar los checks de CI.
+   Verificar crear, editar, completar, arrastrar y recargar tareas de todo el día
+   en semana, mes, todas las tareas y proyectos, con una cuenta de prueba propia.
+
+La API añade `all_day` a tareas, calendario y bootstrap; los PATCH que omiten el
+campo conservan su valor. `start_time` y `end_time` siguen siendo obligatorios y
+válidos, aunque no se muestran cuando `all_day=true`. Al convertir en el formulario
+se conserva el horario; al arrastrar a horas se asigna la hora de destino. Antes de
+un rollback, valorar que las versiones antiguas mostrarán estas tareas con sus
+horas internas: revertir código no borra la columna ni restaura la vista anterior.
 
 Para una copia manual, usar la conexión PostgreSQL indicada en el panel Supabase
 y `pg_dump` instalado desde PostgreSQL. En PowerShell, guardar la conexión en la

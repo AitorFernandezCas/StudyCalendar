@@ -1,25 +1,36 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { Task } from '../lib/taskTypes'
 import { HOUR_HEIGHT, SLOT_MINUTES, minutes, scheduleAtMinute, type TaskSchedule } from '../lib/calendarDrag'
+import { droppedTaskSchedule } from '../lib/taskScheduling'
 
 type Preview = { task: Task; schedule: TaskSchedule; valid: boolean; keyboard: boolean }
 type Gesture = { task: Task; pointerId: number; x: number; y: number; offset: number; active: boolean }
 type Props = {
   days: Date[]; today: string; loading: boolean; busy: boolean; daily: boolean; mobileTimeline: boolean; tasks: Task[]
   renderTask: (task: Task, handle: ReactNode) => ReactNode
+  renderAllDayTask: (task: Task, handle: ReactNode) => ReactNode
   onNew: (date: string, time: string) => void
+  onNewAllDay: (date: string) => void
   onMove: (task: Task, schedule: TaskSchedule) => Promise<boolean>
 }
 const iso = (day: Date) => `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
 const hours = Array.from({ length: 24 }, (_, hour) => hour)
 
-export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTimeline, tasks, renderTask, onNew, onMove }: Props) {
+const timedSchedule = (task: Task, date: string, target: number): TaskSchedule | null => {
+  if (!task.allDay) return scheduleAtMinute(task, date, target)
+  if (!Number.isFinite(target)) return null
+  const schedule = droppedTaskSchedule(task, target)
+  return { date, time: schedule.start_time, endTime: schedule.end_time, allDay: false }
+}
+
+export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTimeline, tasks, renderTask, renderAllDayTask, onNew, onNewAllDay, onMove }: Props) {
   const rootRef = useRef<HTMLElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const gestureRef = useRef<Gesture | null>(null)
   const previewRef = useRef<Preview | null>(null)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [saving, setSaving] = useState(false)
+  const [now, setNow] = useState(() => new Date())
   const savingRef = useRef(false)
   const suppressClickUntil = useRef(0)
   const mounted = useRef(true)
@@ -28,11 +39,32 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
   const keyboardTask = useRef<string | null>(null)
   const latest = useRef({ onMove, busy })
   latest.current = { onMove, busy }
+  const currentDate = iso(now)
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const currentTimeTop = (now.getHours() + now.getMinutes() / 60) * HOUR_HEIGHT
+
+  useEffect(() => {
+    let timer: number
+    const refresh = () => {
+      setNow(new Date())
+      window.clearTimeout(timer)
+      timer = window.setTimeout(refresh, 60_000 - Date.now() % 60_000 + 50)
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh() }
+    refresh()
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
 
   const showPreview = (value: Preview | null) => {
     const current = previewRef.current
     if (current && value && current.task.id === value.task.id && current.valid === value.valid && current.keyboard === value.keyboard &&
-      current.schedule.date === value.schedule.date && current.schedule.time === value.schedule.time && current.schedule.endTime === value.schedule.endTime) return
+      current.schedule.date === value.schedule.date && current.schedule.time === value.schedule.time && current.schedule.endTime === value.schedule.endTime && current.schedule.allDay === value.schedule.allDay) return
     previewRef.current = value
     setPreview(value)
   }
@@ -51,7 +83,7 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     releasePointer()
     if (!current || !current.valid || savingRef.current) { showPreview(null); return }
     const { task, schedule } = current
-    if (schedule.date === task.date && schedule.time === task.time && schedule.endTime === task.endTime) { showPreview(null); return }
+    if (schedule.date === task.date && schedule.time === task.time && schedule.endTime === task.endTime && (schedule.allDay ?? false) === task.allDay) { showPreview(null); return }
     savingRef.current = true
     setSaving(true)
     try { await latest.current.onMove(task, schedule) } finally {
@@ -69,13 +101,22 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
       const scroller = scrollRef.current
       if (!gesture?.active || !scroller) return
       const viewport = scroller.getBoundingClientRect()
+      const allDayColumn = Array.from(rootRef.current!.querySelectorAll<HTMLElement>('.all-day-column')).find(element => {
+        const rect = element.getBoundingClientRect()
+        return pointer.x >= Math.max(rect.left, viewport.left + 72) && pointer.x < Math.min(rect.right, viewport.right) &&
+          pointer.y >= Math.max(rect.top, viewport.top + 70) && pointer.y < Math.min(rect.bottom, viewport.bottom, window.innerHeight)
+      })
+      if (allDayColumn) {
+        showPreview({ task: gesture.task, schedule: { date: allDayColumn.dataset.date!, time: gesture.task.time, endTime: gesture.task.endTime, allDay: true }, valid: true, keyboard: false })
+        return
+      }
       const column = Array.from(rootRef.current!.querySelectorAll<HTMLElement>('.day-column')).find(element => {
         const rect = element.getBoundingClientRect()
         return pointer.x >= Math.max(rect.left, viewport.left + 72) && pointer.x < Math.min(rect.right, viewport.right)
       })
       const bottom = Math.min(viewport.bottom, window.innerHeight - (window.matchMedia('(max-width: 650px)').matches ? 76 : 0))
-      const inside = pointer.y >= Math.max(0, viewport.top + 70) && pointer.y <= bottom
-      const target = column && inside ? scheduleAtMinute(gesture.task, column.dataset.date!,
+      const inside = pointer.y >= Math.max(0, viewport.top + 70, column?.getBoundingClientRect().top ?? 0) && pointer.y <= bottom
+      const target = column && inside ? timedSchedule(gesture.task, column.dataset.date!,
         (pointer.y - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - gesture.offset) : null
       if (target) showPreview({ task: gesture.task, schedule: target, valid: true, keyboard: false })
       else if (previewRef.current) showPreview({ ...previewRef.current, valid: false })
@@ -148,11 +189,18 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
   }, [tasks])
   useEffect(() => {
     if (loading || !scrollRef.current?.clientWidth || positionedRange.current === range) return
-    const first = tasks.length ? Math.min(...tasks.map(task => minutes(task.time))) : 8 * 60
-    scrollRef.current.scrollTop = Math.max(0, first / 60 * HOUR_HEIGHT - 60)
-    if (!daily && scrollRef.current.scrollWidth > scrollRef.current.clientWidth) {
-      const currentDay = Array.from(rootRef.current!.querySelectorAll<HTMLElement>('.day-column')).find(column => column.dataset.date === today)
-      if (currentDay) scrollRef.current.scrollLeft = Math.max(0, currentDay.offsetLeft - 72)
+    const scroller = scrollRef.current
+    const body = rootRef.current!.querySelector<HTMLElement>('.calendar-body')!
+    const header = rootRef.current!.querySelector<HTMLElement>('.calendar-head')!
+    const localNow = new Date()
+    const minute = localNow.getHours() * 60 + localNow.getMinutes()
+    const bodyTop = body.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
+    const headerHeight = header.getBoundingClientRect().height
+    const visibleOffset = headerHeight + (scroller.clientHeight - headerHeight) * .4
+    scroller.scrollTop = Math.max(0, bodyTop + minute / 60 * HOUR_HEIGHT - visibleOffset)
+    if (!daily && scroller.scrollWidth > scroller.clientWidth) {
+      const currentDay = Array.from(rootRef.current!.querySelectorAll<HTMLElement>('.day-column')).find(column => column.dataset.date === iso(localNow))
+      if (currentDay) scroller.scrollLeft = Math.max(0, currentDay.offsetLeft - 72)
     }
     positionedRange.current = range
   }, [range, loading, mobileTimeline, daily, today])
@@ -177,11 +225,11 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     if ((!handle && target.closest('button, input, select, a')) || (event.pointerType !== 'mouse' && !handle)) return
     const element = target.closest<HTMLElement>('[data-task-id]')
     const task = tasks.find(item => item.id === element?.dataset.taskId)
-    const column = element?.closest<HTMLElement>('.day-column')
-    if (!task || !column || !scheduleAtMinute(task, task.date, minutes(task.time))) return
+    const column = element?.closest<HTMLElement>('.day-column, .all-day-column')
+    if (!task || !column || (!task.allDay && !scheduleAtMinute(task, task.date, minutes(task.time)))) return
     showPreview(null)
     gestureRef.current = { task, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
-      offset: (event.clientY - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - minutes(task.time), active: false }
+      offset: task.allDay ? 0 : (event.clientY - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - minutes(task.time), active: false }
   }
 
   const keyboardMove = (event: React.KeyboardEvent<HTMLButtonElement>, task: Task) => {
@@ -194,14 +242,15 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     const index = days.findIndex(day => iso(day) === base.date)
     const nextIndex = Math.max(0, Math.min(days.length - 1, index + (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)))
     const delta = event.key === 'ArrowUp' ? -SLOT_MINUTES : event.key === 'ArrowDown' ? SLOT_MINUTES : 0
-    const schedule = scheduleAtMinute(current?.task || task, iso(days[nextIndex]), minutes(base.time) + delta)
+    const schedule = base.allDay && delta === 0 ? { date: iso(days[nextIndex]), time: base.time, endTime: base.endTime, allDay: true } :
+      timedSchedule(current?.task || task, iso(days[nextIndex]), minutes(base.time) + delta)
     if (schedule) showPreview({ task: current?.task || task, schedule, valid: true, keyboard: true })
   }
 
-  const displayedTasks = tasks.map(task => preview?.task.id === task.id ? { ...task, ...preview.schedule } : task)
+  const displayedTasks = tasks.map(task => preview?.task.id === task.id ? { ...task, ...preview.schedule, allDay: preview.schedule.allDay ?? false } : task)
   const styles = new Map<string, CSSProperties>()
   for (const day of days) {
-    const group = displayedTasks.filter(task => task.date === iso(day)).sort((a, b) => a.time.localeCompare(b.time))
+    const group = displayedTasks.filter(task => !task.allDay && task.date === iso(day)).sort((a, b) => a.time.localeCompare(b.time))
     let cluster: { task: Task; lane: number }[] = []
     let laneEnds: number[] = []
     let clusterEnd = 0
@@ -224,19 +273,28 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     layout()
   }
 
+  const moveHandle = (task: Task) => <button type="button" className="calendar-task-move" data-task-move={task.id} aria-label={`Mover tarea ${task.title}`} aria-pressed={preview?.task.id === task.id} title="Arrastrar; con teclado, usa las flechas y Enter" disabled={busy || saving}
+    onClick={event => event.stopPropagation()} onKeyDown={event => keyboardMove(event, task)}>↕</button>
+
   return <section ref={rootRef} className={`calendar time-grid ${daily ? 'day-calendar' : 'week-calendar'}${mobileTimeline ? ' show-mobile-time-grid' : ''}${preview ? ' is-dragging' : ''}`}
     aria-label={daily ? 'Calendario diario' : 'Calendario semanal'} aria-busy={busy || saving}
     onPointerDownCapture={begin} onClickCapture={event => { if (Date.now() < suppressClickUntil.current || savingRef.current || busy) { suppressClickUntil.current = 0; event.preventDefault(); event.stopPropagation() } }}>
-    <p className="calendar-drag-status" role="status" aria-live="polite">{saving ? 'Guardando horario…' : preview ?
-      `${preview.task.title} · ${new Date(preview.schedule.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })} · ${preview.schedule.time} — ${preview.schedule.endTime}${preview.valid ? preview.keyboard ? ' · Enter para guardar; Esc para cancelar.' : '' : ' · Suelta dentro del calendario para moverla.'}` :
-      'Arrastra una tarea para moverla en intervalos de 15 minutos. En móvil, usa el asa ↕.'}</p>
+    <p className="calendar-drag-announcement" role="status" aria-live="polite">{saving ? 'Guardando horario…' : preview ?
+      `${preview.task.title} · ${new Date(preview.schedule.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })} · ${preview.schedule.allDay ? 'Todo el día' : preview.schedule.time + ' — ' + preview.schedule.endTime}${preview.valid ? preview.keyboard ? ' · Enter para guardar; Esc para cancelar.' : '' : ' · Suelta dentro del calendario para moverla.'}` :
+      ''}</p>
     {loading ? <div className="calendar-loading" role="status">Cargando tareas…</div> : <div className="time-grid-scroll" ref={scrollRef}>
-      <div className="time-grid-content"><div className="calendar-head"><div className="timezone">Hora local</div>{days.map(day => <div key={iso(day)} className={'day-head ' + (iso(day) === today ? 'today' : '')}><span>{day.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase()}</span><strong>{day.getDate()}</strong></div>)}</div>
+      <div className="time-grid-content"><div className="calendar-head"><div className="timezone"><span>Hora local</span><time className="calendar-clock" dateTime={now.toISOString()} aria-label={'Hora actual: ' + currentTime}>{currentTime}</time></div>{days.map(day => <div key={iso(day)} className={'day-head ' + (iso(day) === currentDate ? 'today' : '')}><span>{day.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase()}</span><strong>{day.getDate()}</strong></div>)}</div>
+        <div className="calendar-all-day" aria-label="Tareas de todo el día"><div className="all-day-label">Todo el día</div>{days.map(day => <div key={iso(day)} className="all-day-column" data-date={iso(day)} onClick={event => { if (event.target === event.currentTarget && !busy && !saving) onNewAllDay(iso(day)) }}>
+          {displayedTasks.filter(task => task.allDay && task.date === iso(day)).sort((a, b) => a.title.localeCompare(b.title, 'es')).map(task => <div key={task.id} data-task-id={task.id} className={preview?.task.id === task.id ? 'moving-task' : ''}>{renderAllDayTask(task, moveHandle(task))}</div>)}
+          <button className="all-day-create" disabled={busy || saving} aria-label={'Crear tarea de todo el día el ' + iso(day)} onClick={() => onNewAllDay(iso(day))}>＋</button>
+        </div>)}</div>
         <div className="calendar-body"><div className="time-column">{hours.map(hour => <div key={hour}>{String(hour).padStart(2, '0')}:00</div>)}</div>{days.map(day => <div key={iso(day)} className="day-column" data-date={iso(day)}>
           <div className="hour-lines">{hours.map(hour => <button key={hour} aria-label={`Crear tarea a las ${hour}:00`} onClick={() => onNew(iso(day), `${String(hour).padStart(2, '0')}:00`)} />)}</div>
-          {displayedTasks.filter(task => task.date === iso(day)).map(task => <div key={task.id} data-task-id={task.id} className={'positioned-task' + (preview?.task.id === task.id ? ' moving-task' : '')} style={styles.get(task.id)}>
-            {renderTask(task, <button type="button" className="calendar-task-move" data-task-move={task.id} aria-label={`Mover tarea ${task.title}`} aria-pressed={preview?.task.id === task.id} title="Arrastrar; con teclado, usa las flechas y Enter" disabled={busy || saving}
-              onClick={event => event.stopPropagation()} onKeyDown={event => keyboardMove(event, task)}>↕</button>)}
+          {iso(day) === currentDate && <div className="current-time-marker" style={{ top: currentTimeTop }} aria-label={'Ahora, ' + currentTime}>
+            <span className="current-time-dot" aria-hidden="true" /><span className="current-time-label">{currentTime}</span>
+          </div>}
+          {displayedTasks.filter(task => !task.allDay && task.date === iso(day)).map(task => <div key={task.id} data-task-id={task.id} className={'positioned-task' + (preview?.task.id === task.id ? ' moving-task' : '')} style={styles.get(task.id)}>
+            {renderTask(task, moveHandle(task))}
           </div>)}
         </div>)}</div>
       </div>

@@ -2,7 +2,7 @@ import type { Task } from './taskTypes'
 
 export const HOUR_HEIGHT = 84
 export const SLOT_MINUTES = 15
-export type TaskSchedule = { date: string; time: string; endTime: string }
+export type TaskSchedule = { date: string; time: string; endTime: string; allDay?: boolean }
 
 export const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
 export const clockTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
