@@ -63,7 +63,7 @@ def require_user(view):
                 CategoryService(repositories.categories, user, repositories.tasks),
                 ProjectService(repositories.projects, user),
                 RoutineService(repositories.routines, repositories.summaries, user, clock),
-                QueryService(repositories.tasks, repositories.categories, repositories.projects, clock),
+                QueryService(repositories.tasks, repositories.categories, repositories.projects, clock, repositories.activity),
             )
             return view(*args, **kwargs)
     return wrapped

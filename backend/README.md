@@ -143,6 +143,29 @@ de Supabase ni demuestra una mejora en producción.
 
 ## Verificación manual con datos desechables
 
+### Gráfica de actividad diaria
+
+«Todas las tareas» muestra una cuadrícula anual. `GET /api/activity?year=2026`
+devuelve los días del año con `total`, `completed` y `status`, junto con la fecha,
+zona horaria y próxima medianoche del servidor. Requiere autenticación y consulta
+solo los registros del usuario, paginando tareas, periodos y completados de rutinas.
+No necesita una nueva migración.
+
+Cada fecha cuenta las tareas diarias y de proyectos asignadas a ese día y las
+rutinas cuyo periodo activo incluye esa fecha, aunque actualmente estén pausadas.
+Verde significa que todo está completado; rojo, que quedan pendientes; blanco,
+que la fecha es futura; gris, que no había tareas previstas. Hoy puede estar rojo
+mientras se completan sus tareas. Al tocar un recuadro se muestra su detalle.
+
+La gráfica se recalcula con los registros guardados: editar fechas, desmarcar o
+borrar tareas/rutinas cambia el historial mostrado. Las tareas ordinarias guardan
+un indicador de completado, sin la fecha exacta en que se marcaron; la gráfica
+refleja ese indicador para su día programado.
+
+Comprobar colores y contadores tras completar/desmarcar, cambiar de año, usar
+Reintentar después de un fallo y desplazar la cuadrícula en móvil. El frontend
+refresca al volver a la pestaña y a medianoche según `APP_TIMEZONE`.
+
 La fixture ui_smoke.py se ejecuta exclusivamente en localhost, con datos en memoria
 y dependencias de prueba. No es un punto de entrada de producción. Su cálculo
 simple de rachas sirve para verificar la UI; la implementación de producción

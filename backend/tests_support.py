@@ -8,6 +8,7 @@ from studycalendar.categories.adapters.supabase import SupabaseCategoryRepositor
 from studycalendar.projects.adapters.supabase import SupabaseProjectRepository
 from studycalendar.tasks.adapters.supabase import SupabaseTaskRepository
 from studycalendar.routines.adapters.supabase import SupabaseRoutineRepository, SupabaseRoutineSummaries
+from studycalendar.queries.adapters.supabase import SupabaseActivityRepository
 
 
 class FixedAuth:
@@ -39,4 +40,5 @@ class DatabaseProvider:
             SupabaseTaskRepository(self.database), SupabaseCategoryRepository(self.database),
             SupabaseProjectRepository(self.database), SupabaseRoutineRepository(self.database),
             SupabaseRoutineSummaries(self.database),
+            SupabaseActivityRepository(self.database, user),
         )
