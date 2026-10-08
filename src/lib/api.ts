@@ -2,7 +2,7 @@ import type { Session } from '@supabase/supabase-js'
 
 export type ApiCategory = { id: string; name: string; color: string }
 export type ApiProject = { id: string; name: string; color: string; created_at: string; updated_at: string }
-export type ApiTask = { id: string; title: string; category_id: string | null; project_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string; start_time: string; end_time: string; color: string; completed: boolean }
+export type ApiTask = { id: string; title: string; category_id: string | null; project_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string; start_time: string; end_time: string; all_day: boolean; color: string; completed: boolean }
 export type ApiRoutine = { id: string; title: string; color: string; active: boolean; created_at: string; updated_at: string; due_today: boolean; completed_today: boolean; current_streak: number; max_streak: number }
 export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; routines: ApiRoutine[] }
 export type ApiRoutineCompletion = Omit<ApiRoutineSnapshot, 'routines'> & { routine: ApiRoutine }

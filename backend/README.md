@@ -214,3 +214,12 @@ Los horarios se mantienen dentro de la fecha, sin cruzar medianoche.
 Ejecutar `npm run test:calendar` para verificar ajuste de slots, duración y límites;
 CI ejecuta estas pruebas con Node 24. Verificar también arrastre táctil, scroll
 automático, tareas solapadas, cancelación, fallo de PATCH y persistencia tras recarga.
+
+Para tareas de todo el día, verificar creación desde la franja superior, edición
+con recuperación de horas, varias tarjetas por día, filtros y completado; arrastre
+en ambos sentidos entre franja y horas (intervalos de 15 minutos, límites de
+23:30–23:45), movimiento en mes y persistencia tras recarga. En mes aparecen
+primero y en tareas/proyectos muestran «Todo el día». Las rutinas no ofrecen esta
+opción. `node --test scripts/task-scheduling.test.mjs` verifica los cálculos de
+horarios con Node 24. La prueba `test_task_all_day.sql` requiere una base de prueba
+aislada anterior a la nueva migración; ver `DEPLOYMENT.md`.

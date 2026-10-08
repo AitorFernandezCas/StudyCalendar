@@ -245,6 +245,70 @@ def test_historic_permissive_task_validation(memory):
     assert repos.tasks.writes[-1] == ("update", {"title": "", "start_time": None})
 
 
+@pytest.mark.parametrize("task_type", ["daily", "project"])
+def test_all_day_creation_and_read_contracts(memory, task_type):
+    client, _, _ = memory
+    response = client.post("/api/tasks", headers=HEADERS, json={
+        "title": "Todo el día", "task_type": task_type, "project_id": "p" if task_type == "project" else None,
+        "date": "2026-10-05", "all_day": True,
+    })
+    assert response.status_code == 201
+    assert response.json["all_day"] is True
+    assert (response.json["start_time"], response.json["end_time"]) == ("09:00", "10:00")
+    for endpoint in ("tasks", "calendar", "bootstrap"):
+        result = client.get(f"/api/{endpoint}?from=2026-10-05&to=2026-10-11", headers=HEADERS).json
+        tasks = result if endpoint == "tasks" else result["tasks"]
+        assert next(task for task in tasks if task["id"] == "new")["all_day"] is True
+
+
+def test_all_day_conversion_preserves_hours_and_sparse_changes(memory):
+    client, repos, _ = memory
+    repos.tasks.rows["t"] = Task(id="t", title="Estudiar", start_time="08:30", end_time="10:15")
+    converted = client.patch("/api/tasks/t", headers=HEADERS, json={"all_day": True})
+    assert converted.status_code == 200
+    assert (converted.json["start_time"], converted.json["end_time"]) == ("08:30", "10:15")
+    for patch in ({"date": "2026-10-06"}, {"completed": True}, {"title": "Cambiar título"}):
+        response = client.patch("/api/tasks/t", headers=HEADERS, json=patch)
+        assert response.status_code == 200
+        assert response.json["all_day"] is True
+        assert repos.tasks.writes[-1] == ("update", patch)
+    timed = client.patch("/api/tasks/t", headers=HEADERS, json={"all_day": False, "start_time": "14:15", "end_time": "15:15"})
+    assert timed.status_code == 200
+    assert timed.json["all_day"] is False
+    assert (timed.json["start_time"], timed.json["end_time"]) == ("14:15", "15:15")
+    assert client.get("/api/tasks", headers=HEADERS).json[0]["all_day"] is False
+
+
+@pytest.mark.parametrize("hours,expected", [
+    ({"start_time": "08:30", "end_time": "10:15"}, ("08:30", "10:15")),
+    ({"start_time": None, "end_time": None}, ("09:00", "10:00")),
+    ({"start_time": "10:00", "end_time": "09:00"}, ("09:00", "10:00")),
+    ({"start_time": "bad", "end_time": "bad"}, ("09:00", "10:00")),
+])
+def test_all_day_internal_hours(memory, hours, expected):
+    client, _, _ = memory
+    response = client.post("/api/tasks", headers=HEADERS, json={"title": "T", "all_day": True, **hours})
+    assert response.status_code == 201
+    assert (response.json["start_time"], response.json["end_time"]) == expected
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true", "false", [], {}])
+@pytest.mark.parametrize("method", ["post", "patch"])
+def test_all_day_requires_boolean_without_writes(memory, value, method):
+    client, repos, _ = memory
+    response = getattr(client, method)("/api/tasks" + ("/t" if method == "patch" else ""), headers=HEADERS,
+                                       json={"title": "T", "all_day": value})
+    assert response.status_code == 400
+    assert response.json == {"error": "all_day must be a boolean"}
+    assert repos.tasks.writes == []
+
+
+def test_all_day_not_supported_on_routines(memory):
+    client, _, _ = memory
+    assert client.post("/api/routines", headers=HEADERS, json={"title": "Leer", "all_day": True}).status_code == 400
+    assert client.patch("/api/routines/r", headers=HEADERS, json={"all_day": True}).status_code == 400
+
+
 @pytest.mark.parametrize("starts_on,expected", [
     ("2026-10-01", ("close", "period", "2026-10-04")),
     ("2026-10-05", ("remove", "period")),
@@ -475,9 +539,16 @@ def test_sdk_task_category_queries_conflicts_and_json_errors():
         requests.clear()
         assert client.get("/api/tasks?from=2026-10-01&to=2026-10-07", headers=HEADERS).json[0]["completed"] is True
         params = requests[0].url.params
+        assert "all_day" in params["select"].split(",")
         assert params.get_list("date") == ["gte.2026-10-01", "lte.2026-10-07"]
         assert params["order"] == "date.asc,start_time.asc"
         assert params["task_type"] == "neq.routine"
+        requests.clear()
+        response = client.patch("/api/tasks/t", headers=HEADERS, json={"all_day": True})
+        assert response.status_code == 200 and response.json["all_day"] is True
+        assert len(requests) == 2
+        assert requests[0].method == "GET" and requests[0].url.params["select"] == "all_day"
+        assert json.loads(requests[1].content) == {"all_day": True}
         requests.clear()
         assert client.patch("/api/categories/c", headers=HEADERS, json={"color": "#abcdef"}).status_code == 200
         assert requests[1].url.params["category_id"] == "eq.c"

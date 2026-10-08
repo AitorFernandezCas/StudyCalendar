@@ -59,10 +59,13 @@ def test_disposable_ui_fixture_uses_real_use_cases():
     project = client.post("/api/projects", headers=headers, json={"name": "Examen", "color": "#abcdef"}).json
     task = client.post("/api/tasks", headers=headers, json={"title": "Repasar", "task_type": "project", "category_id": category["id"],
                          "project_id": project["id"], "date": "2026-10-06", "start_time": "09:00", "end_time": "10:00"}).json
+    assert task["all_day"] is False
+    assert client.patch("/api/tasks/" + task["id"], headers=headers, json={"all_day": True}).json["all_day"] is True
     client.delete("/api/projects/" + project["id"], headers=headers)
     client.delete("/api/categories/" + category["id"], headers=headers)
     result = client.get("/api/tasks", headers=headers).json[0]
     assert result["project_id"] is None and result["category_id"] is None
+    assert result["all_day"] is True
     assert client.delete("/api/tasks/" + task["id"], headers=headers).status_code == 200
 
 

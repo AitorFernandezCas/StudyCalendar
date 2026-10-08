@@ -57,7 +57,7 @@ class Repository:
         self.check_name(payload)
         row = {"id": str(uuid4()), "color": "#7c5cff", **payload}
         if self.name == "tasks":
-            row = {"category_id": None, "project_id": None, "task_type": "daily", "completed": False, **row}
+            row = {"category_id": None, "project_id": None, "task_type": "daily", "completed": False, "all_day": False, **row}
         if self.name in ("projects", "routines"):
             row.update(created_at=datetime.now().isoformat(), updated_at=datetime.now().isoformat())
         if self.name == "routines":
