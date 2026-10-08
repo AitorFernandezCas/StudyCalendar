@@ -142,6 +142,22 @@ class DemoAuth:
         return User("demo") if token == "demo-token" else None
 
 
+class Activity:
+    def __init__(self, store):
+        self.store = store
+
+    def read(self, start, end):
+        from studycalendar.queries.domain import ActivityRecords, DatedTask, RoutinePeriod, RoutineCompletion
+        return ActivityRecords(
+            [DatedTask(row["date"], row["completed"]) for row in self.store.rows["tasks"].values()
+             if row["task_type"] != "routine" and start.isoformat() <= row["date"] <= end.isoformat()],
+            [RoutinePeriod(row["routine_id"], row["starts_on"], row["ends_on"])
+             for row in self.store.rows["periods"].values()],
+            [RoutineCompletion(identifier, day) for (identifier, day), completed in self.store.rows["completions"].items()
+             if completed],
+        )
+
+
 class Provider:
     def __init__(self):
         self.store = Store()
@@ -151,7 +167,7 @@ class Provider:
         with self.store.lock:
             routines = Routines(self.store, "routines", Routine)
             yield Repositories(Repository(self.store, "tasks", Task), Repository(self.store, "categories", Category),
-                               Repository(self.store, "projects", Project), routines, routines)
+                               Repository(self.store, "projects", Project), routines, routines, Activity(self.store))
 
 
 def demo_app():

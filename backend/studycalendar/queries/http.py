@@ -4,6 +4,12 @@ from ..shared.http import require_user, serialize, services
 blueprint = Blueprint("queries", __name__)
 
 
+@blueprint.get("/api/activity")
+@require_user
+def activity():
+    return jsonify(serialize(services().queries.activity(request.args.get("year"))))
+
+
 @blueprint.get("/api/calendar")
 @require_user
 def calendar():

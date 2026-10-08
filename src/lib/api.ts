@@ -7,6 +7,12 @@ export type ApiRoutine = { id: string; title: string; color: string; active: boo
 export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; routines: ApiRoutine[] }
 export type ApiRoutineCompletion = Omit<ApiRoutineSnapshot, 'routines'> & { routine: ApiRoutine }
 export type ApiBootstrap = { categories: ApiCategory[]; projects: ApiProject[]; tasks: ApiTask[] }
+export type ApiActivityDay = { date: string; total: number; completed: number; status: 'complete' | 'pending' | 'future' | 'empty' }
+export type ApiActivitySnapshot = { year: number; date: string; timezone: string; next_day_at: string; days: ApiActivityDay[] }
+
+export const activityApi = {
+  load: (session: Session, year: number, signal?: AbortSignal) => request<ApiActivitySnapshot>(`/api/activity?year=${year}`, session, { signal }),
+}
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message) }
