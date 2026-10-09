@@ -24,10 +24,10 @@ class FixedClock:
     def local_date(self):
         return self.today
 
-    def day(self):
+    def day(self, reset_time="00:00"):
         self.calls += 1
-        tomorrow = datetime.combine(self.today + timedelta(days=1), datetime.min.time(), ZoneInfo('Europe/Madrid'))
-        return Day(self.today, 'Europe/Madrid', tomorrow.isoformat())
+        from studycalendar.shared.clock import SystemClock
+        return SystemClock('Europe/Madrid', now=lambda tz: datetime.combine(self.today, datetime.min.time(), tz)).day(reset_time)
 
 
 class DatabaseProvider:

@@ -4,7 +4,14 @@ export type ApiCategory = { id: string; name: string; color: string }
 export type ApiProject = { id: string; name: string; color: string; created_at: string; updated_at: string }
 export type ApiTask = { id: string; title: string; category_id: string | null; project_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string; start_time: string; end_time: string; all_day: boolean; color: string; completed: boolean }
 export type ApiRoutine = { id: string; title: string; color: string; active: boolean; created_at: string; updated_at: string; due_today: boolean; completed_today: boolean; current_streak: number; max_streak: number }
-export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; routines: ApiRoutine[] }
+export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; day_started_at: string; routines: ApiRoutine[] }
+export type ApiSettings = { routine_reset_time: string; calendar_start_time: string; calendar_end_time: string; week_start: 'monday' | 'sunday'; timezone: string }
+export type SettingsChanges = Partial<Omit<ApiSettings, 'timezone'>>
+
+export const settingsApi = {
+  get: (session: Session, signal?: AbortSignal) => request<ApiSettings>('/api/settings', session, { signal }),
+  update: (session: Session, changes: SettingsChanges) => request<ApiSettings>('/api/settings', session, { method: 'PATCH', body: JSON.stringify(changes) }),
+}
 export type ApiRoutineCompletion = Omit<ApiRoutineSnapshot, 'routines'> & { routine: ApiRoutine }
 export type ApiBootstrap = { categories: ApiCategory[]; projects: ApiProject[]; tasks: ApiTask[] }
 export type ApiActivityDay = { date: string; total: number; completed: number; status: 'complete' | 'pending' | 'future' | 'empty' }
@@ -15,7 +22,7 @@ export const activityApi = {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message) }
+  constructor(message: string, public status: number, public fields: Record<string, string> = {}) { super(message) }
 }
 
 const apiUrl = (import.meta.env.VITE_API_URL as string | undefined || 'http://localhost:5000').replace(/\/$/, '')
@@ -23,7 +30,7 @@ const apiUrl = (import.meta.env.VITE_API_URL as string | undefined || 'http://lo
 async function request<T>(path: string, session: Session, options?: RequestInit): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, ...options?.headers } })
   const body = await response.json().catch(() => { throw new ApiError('El servidor todavía no está disponible. Inténtalo de nuevo.', response.status) })
-  if (!response.ok) throw new ApiError(body.error || 'No se pudo completar la operación', response.status)
+  if (!response.ok) throw new ApiError(body.error || 'No se pudo completar la operación', response.status, body.fields)
   return body as T
 }
 

@@ -223,3 +223,32 @@ primero y en tareas/proyectos muestran «Todo el día». Las rutinas no ofrecen 
 opción. `node --test scripts/task-scheduling.test.mjs` verifica los cálculos de
 horarios con Node 24. La prueba `test_task_all_day.sql` requiere una base de prueba
 aislada anterior a la nueva migración; ver `DEPLOYMENT.md`.
+## Preferencias personales
+
+`GET /api/settings` y `PATCH /api/settings` usan el usuario autenticado y el
+repositorio del módulo `preferences`. Los campos son `routine_reset_time`,
+`calendar_start_time`, `calendar_end_time` (`HH:MM`) y `week_start`
+(`monday`/`sunday`); la respuesta incluye `timezone`. Sin fila se devuelven los
+valores 00:00, 00:00–24:00 y lunes, sin escribir. El PATCH conserva los campos
+omitidos, rechaza null y valida el intervalo completo. `24:00` solo es válido
+como fin del calendario. Las lecturas fallidas no se sustituyen por defaults.
+
+El reloj admite `day(reset_time)`; las rutinas consultan su preferencia y capturan
+un único día efectivo para períodos, completaciones y rachas. Consulta y
+completado devuelven también `day_started_at`, con `next_day_at` como límite
+exclusivo. La hora inexistente durante el salto de verano se mueve al primer
+minuto válido y la hora repetida usa la primera aparición. Calendario y actividad
+conservan su día natural; la actividad suma las completaciones en su fecha guardada.
+
+Comprobar con la fixture local: guardar 04:30, 07:30–22:15 y domingo; recargar y
+abrir una segunda pestaña. Verificar semana/mes, agenda móvil, tareas parcialmente
+visibles y fuera del rango, todo el día, línea de hora y arrastre con ratón/teclado.
+Guardar un intervalo incorrecto debe mostrar error sin perder el borrador. Para
+probar un día efectivo anterior, configurar una hora posterior a la actual y
+verificar creación, completado/desmarcado y sincronización entre tareas y rutinas.
+
+`python -m pytest backend -q` y `npm run test:calendar` cubren límites, DST,
+preferencias, adaptador y cálculos del calendario. Ejecutar
+`psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_user_settings.sql`
+en una base de pruebas migrada con conexión administrativa; verifica defaults,
+PATCH parcial, restricciones, RLS y permisos anónimos en una transacción revertida.
