@@ -29,9 +29,13 @@ class Day:
     date: date
     timezone: str
     next_day_at: str
+    day_started_at: str | None = None
 
     def metadata(self) -> dict:
-        return {"date": self.date.isoformat(), "timezone": self.timezone, "next_day_at": self.next_day_at}
+        result = {"date": self.date.isoformat(), "timezone": self.timezone, "next_day_at": self.next_day_at}
+        if self.day_started_at is not None:
+            result["day_started_at"] = self.day_started_at
+        return result
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,7 @@ from ..projects.application import ProjectService
 from ..tasks.application import TaskService
 from ..routines.application import RoutineService
 from ..queries.application import QueryService
+from ..preferences.application import PreferencesService
 from .domain import Model
 
 
@@ -32,6 +33,7 @@ class Services:
     projects: ProjectService
     routines: RoutineService
     queries: QueryService
+    preferences: PreferencesService
 
 
 def services():
@@ -62,8 +64,9 @@ def require_user(view):
                 TaskService(repositories.tasks, repositories.categories, repositories.projects, user, clock),
                 CategoryService(repositories.categories, user, repositories.tasks),
                 ProjectService(repositories.projects, user),
-                RoutineService(repositories.routines, repositories.summaries, user, clock),
+                RoutineService(repositories.routines, repositories.summaries, user, clock, repositories.preferences),
                 QueryService(repositories.tasks, repositories.categories, repositories.projects, clock, repositories.activity),
+                PreferencesService(repositories.preferences, user, current_app.extensions["studycalendar.settings"].timezone),
             )
             return view(*args, **kwargs)
     return wrapped

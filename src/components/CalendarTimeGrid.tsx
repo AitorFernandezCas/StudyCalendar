@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { Task } from '../lib/taskTypes'
-import { HOUR_HEIGHT, SLOT_MINUTES, minutes, scheduleAtMinute, type TaskSchedule } from '../lib/calendarDrag'
-import { droppedTaskSchedule } from '../lib/taskScheduling'
+import { HOUR_HEIGHT, SLOT_MINUTES, minutes, clockTime, scheduleAtMinute, type TaskSchedule } from '../lib/calendarDrag'
+import { timeSegments, visibleTimedTask } from '../lib/calendarPreferences'
 
 type Preview = { task: Task; schedule: TaskSchedule; valid: boolean; keyboard: boolean }
 type Gesture = { task: Task; pointerId: number; x: number; y: number; offset: number; active: boolean }
 type Props = {
   days: Date[]; today: string; loading: boolean; busy: boolean; daily: boolean; mobileTimeline: boolean; tasks: Task[]
+  startMinute: number; endMinute: number
   renderTask: (task: Task, handle: ReactNode) => ReactNode
   renderAllDayTask: (task: Task, handle: ReactNode) => ReactNode
   onNew: (date: string, time: string) => void
@@ -14,16 +15,15 @@ type Props = {
   onMove: (task: Task, schedule: TaskSchedule) => Promise<boolean>
 }
 const iso = (day: Date) => `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`
-const hours = Array.from({ length: 24 }, (_, hour) => hour)
 
-const timedSchedule = (task: Task, date: string, target: number): TaskSchedule | null => {
-  if (!task.allDay) return scheduleAtMinute(task, date, target)
+const timedSchedule = (task: Task, date: string, target: number, start: number, end: number): TaskSchedule | null => {
+  if (!task.allDay) return scheduleAtMinute(task, date, target, start, end)
   if (!Number.isFinite(target)) return null
-  const schedule = droppedTaskSchedule(task, target)
-  return { date, time: schedule.start_time, endTime: schedule.end_time, allDay: false }
+  const schedule = scheduleAtMinute({ time: '00:00', endTime: '01:00' }, date, target, start, end)
+  return schedule ? { ...schedule, allDay: false } : null
 }
 
-export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTimeline, tasks, renderTask, renderAllDayTask, onNew, onNewAllDay, onMove }: Props) {
+export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTimeline, tasks, startMinute, endMinute, renderTask, renderAllDayTask, onNew, onNewAllDay, onMove }: Props) {
   const rootRef = useRef<HTMLElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const gestureRef = useRef<Gesture | null>(null)
@@ -34,14 +34,17 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
   const savingRef = useRef(false)
   const suppressClickUntil = useRef(0)
   const mounted = useRef(true)
-  const range = days.map(iso).join(':')
+  const range = `${days.map(iso).join(':')}:${startMinute}:${endMinute}`
+  const segments = timeSegments(startMinute, endMinute)
+  const gridHeight = (endMinute - startMinute) / 60 * HOUR_HEIGHT
   const positionedRange = useRef('')
   const keyboardTask = useRef<string | null>(null)
   const latest = useRef({ onMove, busy })
   latest.current = { onMove, busy }
   const currentDate = iso(now)
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  const currentTimeTop = (now.getHours() + now.getMinutes() / 60) * HOUR_HEIGHT
+  const nowMinute = now.getHours() * 60 + now.getMinutes()
+  const currentTimeTop = (nowMinute - startMinute) / 60 * HOUR_HEIGHT
 
   useEffect(() => {
     let timer: number
@@ -117,7 +120,7 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
       const bottom = Math.min(viewport.bottom, window.innerHeight - (window.matchMedia('(max-width: 650px)').matches ? 76 : 0))
       const inside = pointer.y >= Math.max(0, viewport.top + 70, column?.getBoundingClientRect().top ?? 0) && pointer.y <= bottom
       const target = column && inside ? timedSchedule(gesture.task, column.dataset.date!,
-        (pointer.y - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - gesture.offset) : null
+        startMinute + (pointer.y - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - gesture.offset, startMinute, endMinute) : null
       if (target) showPreview({ task: gesture.task, schedule: target, valid: true, keyboard: false })
       else if (previewRef.current) showPreview({ ...previewRef.current, valid: false })
     }
@@ -197,7 +200,7 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     const bodyTop = body.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
     const headerHeight = header.getBoundingClientRect().height
     const visibleOffset = headerHeight + (scroller.clientHeight - headerHeight) * .4
-    scroller.scrollTop = Math.max(0, bodyTop + minute / 60 * HOUR_HEIGHT - visibleOffset)
+    scroller.scrollTop = Math.max(0, bodyTop + (Math.max(startMinute, Math.min(endMinute, minute)) - startMinute) / 60 * HOUR_HEIGHT - visibleOffset)
     if (!daily && scroller.scrollWidth > scroller.clientWidth) {
       const currentDay = Array.from(rootRef.current!.querySelectorAll<HTMLElement>('.day-column')).find(column => column.dataset.date === iso(localNow))
       if (currentDay) scroller.scrollLeft = Math.max(0, currentDay.offsetLeft - 72)
@@ -229,7 +232,7 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     if (!task || !column || (!task.allDay && !scheduleAtMinute(task, task.date, minutes(task.time)))) return
     showPreview(null)
     gestureRef.current = { task, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
-      offset: task.allDay ? 0 : (event.clientY - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - minutes(task.time), active: false }
+      offset: task.allDay ? 0 : startMinute + (event.clientY - column.getBoundingClientRect().top) / HOUR_HEIGHT * 60 - minutes(task.time), active: false }
   }
 
   const keyboardMove = (event: React.KeyboardEvent<HTMLButtonElement>, task: Task) => {
@@ -243,21 +246,22 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
     const nextIndex = Math.max(0, Math.min(days.length - 1, index + (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)))
     const delta = event.key === 'ArrowUp' ? -SLOT_MINUTES : event.key === 'ArrowDown' ? SLOT_MINUTES : 0
     const schedule = base.allDay && delta === 0 ? { date: iso(days[nextIndex]), time: base.time, endTime: base.endTime, allDay: true } :
-      timedSchedule(current?.task || task, iso(days[nextIndex]), minutes(base.time) + delta)
+      timedSchedule(current?.task || task, iso(days[nextIndex]), minutes(base.time) + delta, startMinute, endMinute)
     if (schedule) showPreview({ task: current?.task || task, schedule, valid: true, keyboard: true })
   }
 
   const displayedTasks = tasks.map(task => preview?.task.id === task.id ? { ...task, ...preview.schedule, allDay: preview.schedule.allDay ?? false } : task)
   const styles = new Map<string, CSSProperties>()
   for (const day of days) {
-    const group = displayedTasks.filter(task => !task.allDay && task.date === iso(day)).sort((a, b) => a.time.localeCompare(b.time))
+    const group = displayedTasks.filter(task => !task.allDay && task.date === iso(day) && visibleTimedTask(task, startMinute, endMinute)).sort((a, b) => a.time.localeCompare(b.time))
     let cluster: { task: Task; lane: number }[] = []
     let laneEnds: number[] = []
     let clusterEnd = 0
     const layout = () => {
       for (const { task, lane } of cluster) {
-        const start = minutes(task.time), duration = minutes(task.endTime) - start
-        styles.set(task.id, { top: start / 60 * HOUR_HEIGHT + 6, height: Math.max(52, duration / 60 * HOUR_HEIGHT - 8),
+        const start = Math.max(startMinute, minutes(task.time)), end = Math.min(endMinute, minutes(task.endTime))
+        const height = (end - start) / 60 * HOUR_HEIGHT
+        styles.set(task.id, { top: (start - startMinute) / 60 * HOUR_HEIGHT, height: Math.min(gridHeight - (start - startMinute) / 60 * HOUR_HEIGHT, Math.max(Math.min(52, height), height - 8)),
           width: `calc(${100 / laneEnds.length}% - 7px)`, left: `calc(${lane * 100 / laneEnds.length}% + 4px)` })
       }
     }
@@ -288,12 +292,12 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
           {displayedTasks.filter(task => task.allDay && task.date === iso(day)).sort((a, b) => a.title.localeCompare(b.title, 'es')).map(task => <div key={task.id} data-task-id={task.id} className={preview?.task.id === task.id ? 'moving-task' : ''}>{renderAllDayTask(task, moveHandle(task))}</div>)}
           <button className="all-day-create" disabled={busy || saving} aria-label={'Crear tarea de todo el día el ' + iso(day)} onClick={() => onNewAllDay(iso(day))}>＋</button>
         </div>)}</div>
-        <div className="calendar-body"><div className="time-column">{hours.map(hour => <div key={hour}>{String(hour).padStart(2, '0')}:00</div>)}</div>{days.map(day => <div key={iso(day)} className="day-column" data-date={iso(day)}>
-          <div className="hour-lines">{hours.map(hour => <button key={hour} aria-label={`Crear tarea a las ${hour}:00`} onClick={() => onNew(iso(day), `${String(hour).padStart(2, '0')}:00`)} />)}</div>
-          {iso(day) === currentDate && <div className="current-time-marker" style={{ top: currentTimeTop }} aria-label={'Ahora, ' + currentTime}>
+        <div className="calendar-body" style={{ '--grid-height': `${gridHeight}px` } as CSSProperties}><div className="time-column">{segments.map(segment => <div key={segment.minute} style={{ height: segment.duration / 60 * HOUR_HEIGHT }}>{clockTime(segment.minute)}</div>)}</div>{days.map(day => <div key={iso(day)} className="day-column" data-date={iso(day)}>
+          <div className="hour-lines">{segments.map(segment => <button key={segment.minute} style={{ height: segment.duration / 60 * HOUR_HEIGHT }} aria-label={`Crear tarea a las ${clockTime(segment.minute)}`} onClick={() => onNew(iso(day), clockTime(segment.minute))} />)}</div>
+          {iso(day) === currentDate && nowMinute >= startMinute && nowMinute < endMinute && <div className="current-time-marker" style={{ top: currentTimeTop }} aria-label={'Ahora, ' + currentTime}>
             <span className="current-time-dot" aria-hidden="true" /><span className="current-time-label">{currentTime}</span>
           </div>}
-          {displayedTasks.filter(task => !task.allDay && task.date === iso(day)).map(task => <div key={task.id} data-task-id={task.id} className={'positioned-task' + (preview?.task.id === task.id ? ' moving-task' : '')} style={styles.get(task.id)}>
+          {displayedTasks.filter(task => !task.allDay && task.date === iso(day) && visibleTimedTask(task, startMinute, endMinute)).map(task => <div key={task.id} data-task-id={task.id} className={'positioned-task' + (preview?.task.id === task.id ? ' moving-task' : '')} style={styles.get(task.id)}>
             {renderTask(task, moveHandle(task))}
           </div>)}
         </div>)}</div>

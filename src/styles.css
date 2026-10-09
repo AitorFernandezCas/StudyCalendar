@@ -56,10 +56,10 @@
 .all-day-create:disabled{opacity:.4;cursor:default}
 .month-task-all-day{background:color-mix(in srgb,var(--task-color) 13%,white);font-weight:600}
 @media(max-width:650px){.calendar-all-day{width:980px}}
-.calendar-body{min-height:2016px;background:none;overflow:visible}
+.calendar-body{height:var(--grid-height,2016px);min-height:var(--grid-height,2016px);background:none;overflow:visible}
 .time-column{border-right:1px solid #eef0f3;background:#fbfbfd;padding-top:0}
 .time-column div{height:84px;border-bottom:1px solid #eef0f3;color:#a9aeb8;font-size:10px;text-align:center;padding-top:7px}
-.day-column{position:relative;min-height:2016px;border-right:1px solid #eef0f3;background:transparent}
+.day-column{position:relative;height:var(--grid-height,2016px);min-height:var(--grid-height,2016px);border-right:1px solid #eef0f3;background:transparent}
 .hour-lines{position:absolute;inset:0;display:flex;flex-direction:column;z-index:0}
 .hour-lines button{height:84px;flex:none;border:0;border-bottom:1px solid #eef0f3;border-left:0;background:transparent;cursor:pointer}
 .hour-lines button:hover{background:#faf9ff}
@@ -86,7 +86,7 @@
 .project-summary:focus-visible{outline:2px solid #7056ed;outline-offset:4px}
 .project-summary .project-title{min-width:0}
 .project-name{font-size:15px;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
-.project-pending{padding:5px 9px;border-radius:12px;background:#f1efff;color:#7056ed;font:600 11px 'DM Sans',sans-serif;white-space:nowrap}
+.project-pending,.project-completed{padding:5px 9px;border-radius:12px;background:#f1efff;color:#7056ed;font:600 11px 'DM Sans',sans-serif;white-space:nowrap}
 .project-chevron{width:20px;height:20px;transition:transform .15s ease}
 .project-summary[aria-expanded=true] .project-chevron{transform:rotate(180deg)}
 .project-card-head{justify-content:flex-end;margin-top:8px}
@@ -107,7 +107,7 @@
 @media(max-width:650px){
   .project-summary{gap:8px;grid-template-columns:minmax(0,1fr) auto 20px}
   .project-summary .project-title{min-width:0}
-  .project-pending{padding:5px 7px}
+  .project-pending,.project-completed{padding:5px 7px}
 }
 @media(prefers-reduced-motion:reduce){.project-chevron{transition:none}}
 .project-task-group h5{display:flex;align-items:center;gap:8px;font-size:12px;color:#626b7c;margin:16px 0 10px}
@@ -136,10 +136,8 @@
 .daily-habit.done{opacity:1;background:#f6f7fb}
 .daily-habit.done strong{color:#828b9c}
 .daily-habit .overview-task-main strong,.routine-definition .overview-task-main strong{white-space:normal;overflow-wrap:anywhere;font-size:12px}
-.habit-completion{flex:none;width:32px;height:32px;border:1px solid #ddd7ff;border-radius:50%;background:#f5f2ff;color:#7056ed;font-size:22px;cursor:pointer}
-.habit-completion[aria-pressed=true]{background:#7056ed;color:white}
+.habit-completion{flex:none;border:0;background:transparent;color:var(--task-color);cursor:pointer}
 .habit-completion:disabled{opacity:.5;cursor:wait}
-.habit-completion:focus-visible{outline:2px solid #7056ed;outline-offset:3px}
 .routine-load-state{font-size:12px;padding:18px 0;color:#9d4a55;overflow-wrap:anywhere}
 .routine-load-state button{border:1px solid #ddd7ff;border-radius:6px;padding:7px 12px;background:#f5f2ff;color:#7056ed;cursor:pointer}
 .routine-definition.inactive{opacity:1;background:#f6f7fb}
@@ -173,6 +171,18 @@
 .header-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .mobile-settings-button{display:none;border:1px solid #e3e5eb;background:#fff;color:#747b89;width:38px;height:38px;border-radius:9px;align-items:center;justify-content:center;cursor:pointer;font-size:20px}
 .settings-view{margin-top:28px;max-width:820px}
+.preferences-form{display:grid;gap:16px}
+.preferences-form label{display:flex;flex-direction:column;gap:8px;font-size:13px;color:#626b7c;margin:16px 0}
+.preferences-form input[type=time],.preferences-form select{width:100%;height:44px;border:1px solid #e1e4eb;border-radius:8px;padding:0 10px;background:#fff;color:#424b5d;font:inherit}
+.settings-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.preferences-form .settings-midnight{flex-direction:row;align-items:center}
+.settings-field-error{color:#bd6258;font-size:13px}
+.settings-hint{font-size:12px;color:#747b89;line-height:1.6}
+.settings-save{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.settings-save p{font-size:13px;margin:0}
+.settings-save button{border:0;border-radius:8px;background:#7c5cff;color:#fff;padding:12px 18px;font:600 13px 'DM Sans',sans-serif;cursor:pointer;min-height:44px}
+.preferences-form input:focus-visible,.preferences-form select:focus-visible{outline:2px solid #7c5cff;outline-offset:3px}
+@media(max-width:650px){.settings-fields{grid-template-columns:1fr;gap:0}.settings-save{align-items:stretch;flex-direction:column}}
 .settings-card{background:#fff;border:1px solid #e5e7ed;border-radius:14px;padding:24px;box-shadow:0 4px 20px #252d3d05}
 .settings-card h2{font:600 18px 'DM Sans',sans-serif;margin:0;color:#424b5d}
 .settings-description{font-size:13px;color:#969daa;margin:8px 0 22px}
@@ -242,6 +252,14 @@
 .overview-task-main small{line-height:1.5;overflow-wrap:anywhere}
 .project-title{flex:1}
 .project-card-actions{flex:none}
+.project-card-actions .project-edit-button,.project-card-actions .project-delete-button{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:8px;color:#697386;transition:color .15s,background .15s}
+.project-card-actions .project-edit-button:hover{color:#7056ed;background:#f0ecff}
+.project-card-actions .project-delete-button:hover{color:#c44646;background:#fff0f0}
+.project-card-actions .project-edit-button:focus-visible,.project-card-actions .project-delete-button:focus-visible{outline:2px solid #7c5cff;outline-offset:2px}
+.overview-task .task-actions .task-completion-button,.habit-completion{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:8px;transition:background .15s}
+.overview-task .task-actions .task-completion-button:hover,.habit-completion:hover:not(:disabled){background:color-mix(in srgb,var(--task-color) 12%,transparent)}
+.overview-task .task-actions .task-completion-button:focus-visible,.habit-completion:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media(max-width:650px){.project-card-actions .project-edit-button,.project-card-actions .project-delete-button,.overview-task .task-actions .task-completion-button{width:44px;height:44px}}
 .mobile-navigation,.mobile-week-calendar,.mobile-account{display:none}
 .modal-backdrop{z-index:20;overflow-y:auto}
 .modal{max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}

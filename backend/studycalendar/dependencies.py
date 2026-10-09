@@ -7,6 +7,7 @@ from .projects.ports import ProjectRepository
 from .tasks.ports import TaskRepository
 from .routines.ports import RoutineRepository, RoutineSummaries
 from .queries.ports import ActivityRepository
+from .preferences.ports import PreferencesRepository
 from .shared.domain import User
 from .shared.ports import Authenticator, Clock
 
@@ -19,6 +20,7 @@ class Repositories:
     routines: RoutineRepository
     summaries: RoutineSummaries
     activity: ActivityRepository | None = None
+    preferences: PreferencesRepository | None = None
 
 
 class RepositoryProvider(Protocol):

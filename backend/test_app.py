@@ -163,7 +163,7 @@ def test_routine_summary_has_canonical_day_and_no_times(authenticated_routines_c
     client, requests, row, _ = authenticated_routines_client
     response = client.get('/api/routines', headers=HEADERS)
     assert response.status_code == 200
-    assert response.json == {'date': '2026-10-05', 'timezone': 'Europe/Madrid', 'next_day_at': '2026-10-06T00:00:00+02:00', 'routines': [row]}
+    assert response.json == {'date': '2026-10-05', 'timezone': 'Europe/Madrid', 'next_day_at': '2026-10-06T00:00:00+02:00', 'day_started_at': '2026-10-05T00:00:00+02:00', 'routines': [row]}
     assert json.loads(requests[0].read()) == {'p_today': '2026-10-05'}
     assert requests[0].headers['Content-Profile'] == 'Task'
 

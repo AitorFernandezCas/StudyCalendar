@@ -21,11 +21,13 @@ from studycalendar.tasks.domain import Task
 from studycalendar.categories.domain import Category
 from studycalendar.projects.domain import Project
 from studycalendar.routines.domain import Routine, RoutineSummary, Period
+from studycalendar.preferences.domain import Preferences
 
 
 class Store:
     def __init__(self):
         self.lock = RLock()
+        self.preferences = {}
         self.rows = {name: {} for name in ("tasks", "categories", "projects", "routines", "periods", "completions")}
 
 
@@ -158,6 +160,19 @@ class Activity:
         )
 
 
+class MemoryPreferences:
+    def __init__(self, store, user):
+        self.store, self.user = store, user
+
+    def get(self):
+        return self.store.preferences.get(self.user.id, Preferences())
+
+    def save(self, changes):
+        result = self.get().patch(changes)
+        self.store.preferences[self.user.id] = result
+        return result
+
+
 class Provider:
     def __init__(self):
         self.store = Store()
@@ -167,7 +182,7 @@ class Provider:
         with self.store.lock:
             routines = Routines(self.store, "routines", Routine)
             yield Repositories(Repository(self.store, "tasks", Task), Repository(self.store, "categories", Category),
-                               Repository(self.store, "projects", Project), routines, routines, Activity(self.store))
+                               Repository(self.store, "projects", Project), routines, routines, Activity(self.store), MemoryPreferences(self.store, user))
 
 
 def demo_app():

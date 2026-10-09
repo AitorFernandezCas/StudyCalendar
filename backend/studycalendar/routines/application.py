@@ -5,6 +5,7 @@ from .domain import RoutineSummary, Completion, routine_command
 from .ports import RoutineRepository, RoutineSummaries
 from ..shared.domain import BusinessError, Day, User
 from ..shared.ports import Clock
+from ..preferences.ports import PreferencesRepository
 
 
 @dataclass(frozen=True)
@@ -20,19 +21,25 @@ class CompletionResult:
 
 
 class RoutineService:
-    def __init__(self, repository: RoutineRepository, summaries: RoutineSummaries, user: User, clock: Clock):
+    def __init__(self, repository: RoutineRepository, summaries: RoutineSummaries, user: User, clock: Clock, preferences: PreferencesRepository | None = None):
         self.repository = repository
         self.summaries = summaries
         self.user = user
         self.clock = clock
+        self.preferences = preferences
+
+    def day(self) -> Day:
+        if self.preferences is None:
+            return self.clock.day()
+        return self.clock.day(self.preferences.get().routine_reset_time)
 
     def list(self) -> Snapshot:
-        day = self.clock.day()
+        day = self.day()
         return Snapshot(day, self.summaries.summaries(day.date))
 
     def create(self, raw: Any) -> RoutineSummary:
         payload = routine_command(raw, creating=True).payload()
-        day = self.clock.day()
+        day = self.day()
         starts_on = payload.pop("starts_on", day.date.isoformat())
         active = payload.get("active", True)
         payload["user_id"] = self.user.id
@@ -48,7 +55,7 @@ class RoutineService:
         current = self.repository.get(identifier)
         if current is None:
             raise BusinessError("Routine not found", "not_found")
-        day = self.clock.day()
+        day = self.day()
         # Historic API accepts and validates starts_on on PATCH but ignores it.
         payload.pop("starts_on", None)
         active = payload.get("active", current.active)
@@ -74,7 +81,7 @@ class RoutineService:
 
     def complete(self, identifier: str, raw: Any) -> CompletionResult:
         command = Completion.parse(raw)
-        day = self.clock.day()
+        day = self.day()
         if command.date != day.date:
             raise BusinessError("El día ha cambiado. Actualiza las rutinas.", "conflict", {"date": day.date.isoformat()})
         rows = self.summaries.summaries(day.date, identifier)

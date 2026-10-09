@@ -222,3 +222,53 @@ Publicado el 7 de octubre de 2026:
 El historial de pruebas no implica un SLA. La suspensión real por inactividad,
 el acceso con la cuenta del usuario y las operaciones autenticadas se verifican
 por separado durante la puesta en marcha; los checks públicos no usan una sesión.
+## Despliegue de preferencias personales
+
+La funcionalidad necesita `20261009141547_user_settings.sql`, una migración
+aditiva del esquema `Task`. El código anterior puede seguir funcionando con la
+tabla añadida; el nuevo backend requiere esa tabla. No cambia Auth global ni la
+función de rachas y no mueve completaciones o períodos existentes.
+
+1. Seguir el procedimiento existente de copia privada y reconciliar el historial
+   local/remoto antes de modificar la base compartida. No ejecutar `db push`
+   indiscriminadamente ni aplicar migraciones desde CI o Render.
+2. Aplicar la nueva migración en una base de pruebas y ejecutar
+   `backend/test_user_settings.sql` con `ON_ERROR_STOP=1`. Revisar RLS, grants y
+   los asesores de Supabase. El script revierte sus fixtures.
+3. Tras esa verificación y la copia, aplicar únicamente esta migración al proyecto
+   existente. Publicar backend y después frontend, con CI satisfactoria. El nuevo
+   frontend necesita los metadatos `day_started_at` del nuevo backend.
+4. Verificar con una cuenta de prueba guardado/recarga, otro dispositivo, rutinas
+   antes y después del reinicio, semana desde domingo/lunes y horarios con minutos.
+   Confirmar carga/error/reintento y las rutas directas existentes.
+
+No se necesitan nuevas variables ni servicios. La zona sigue siendo
+`APP_TIMEZONE=Europe/Madrid`. Cambiar la hora de reinicio aplica inmediatamente el
+día efectivo y conserva la fecha de todas las completaciones anteriores. Un
+rollback de código no requiere borrar la tabla; no revierte la migración.
+
+Verificación local del 9 de octubre de 2026: build correcto, 165 pruebas backend
+y 12 pruebas de calendario correctas. La fixture desechable confirmó guardado y
+recarga, domingo en semana/mes, minutos, recorte/ocultación, agenda móvil, arrastre
+con ratón/teclado y completado/desmarcado en el día efectivo anterior. La
+verificación posterior de base de datos se registra a continuación;
+el despliegue del nuevo código sigue pendiente.
+
+El 9 de octubre se verificó además `user_settings` con el script SQL de permisos
+en PostgreSQL aislado (PGlite), usando fixtures de Auth locales y revirtiendo sus
+datos. Se inspeccionó el esquema remoto y su historial. La correspondencia
+histórica se documenta en
+`supabase/MIGRATION_HISTORY.md`; no se reejecutaron ni repararon versiones antiguas.
+Antes de aplicar, el usuario confirmó que ya disponía de una copia privada
+reciente y autorizó la aplicación.
+
+Se aplicó únicamente `user_settings`, registrada remotamente como
+`20261009141547`; se alineó el nombre del archivo local con esa versión. La nueva
+tabla tenía cero filas, RLS activo, defaults correctos y políticas de propiedad
+para SELECT/INSERT/UPDATE. Se verificó la denegación de acceso anónimo, borrado y
+reasignación del propietario. Los recuentos de las seis tablas anteriores se
+conservaron, `routine_summaries` no cambió y el asesor de seguridad no introdujo
+avisos nuevos. La API REST reconoce la tabla y devuelve `401`/`42501` al intentar
+leerla con la clave pública y sin sesión. `task_all_day` sigue sin aplicarse.
+El código nuevo aún requiere
+publicación mediante CI y verificación autenticada en producción.

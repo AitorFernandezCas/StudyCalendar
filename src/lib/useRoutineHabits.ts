@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { ApiError, routinesApi, type ApiRoutineSnapshot } from './api'
+import { routineDayIsCurrent } from './routineDay'
 
 export const dateInTimezone = (timezone: string) => {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
@@ -8,7 +9,7 @@ export const dateInTimezone = (timezone: string) => {
   return `${part('year')}-${part('month')}-${part('day')}`
 }
 
-export function useRoutineHabits(session: Session) {
+export function useRoutineHabits(session: Session, resetTime?: string) {
   const [snapshot, setSnapshot] = useState<ApiRoutineSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -17,6 +18,9 @@ export function useRoutineHabits(session: Session) {
   const [changedId, setChangedId] = useState<string | null>(null)
   const snapshotRef = useRef<ApiRoutineSnapshot | null>(null)
   const snapshotTokenRef = useRef(session.access_token)
+  const snapshotResetRef = useRef(resetTime)
+  const resetRef = useRef(resetTime)
+  resetRef.current = resetTime
   const activationRef = useRef(false)
   const flightRef = useRef<{ token: string; day: string; promise: Promise<void> } | null>(null)
   const requestRef = useRef<AbortController | null>(null)
@@ -28,7 +32,7 @@ export function useRoutineHabits(session: Session) {
 
   const refresh = useCallback((options?: { force?: boolean }): Promise<void> => {
     if (!mountedRef.current || tokenRef.current !== session.access_token) return Promise.resolve()
-    const day = dateInTimezone(snapshotRef.current?.timezone || 'Europe/Madrid')
+    const day = `${resetTime}:${snapshotRef.current?.next_day_at || ''}:${routineDayIsCurrent(snapshotRef.current || { day_started_at: '', next_day_at: '' })}`
     const flight = flightRef.current
     if (!options?.force && flight?.token === session.access_token && flight.day === day) return flight.promise
     requestRef.current?.abort()
@@ -42,6 +46,7 @@ export function useRoutineHabits(session: Session) {
       if (version === versionRef.current && !controller.signal.aborted && tokenRef.current === session.access_token) {
         snapshotRef.current = data
         snapshotTokenRef.current = session.access_token
+        snapshotResetRef.current = resetTime
         setSnapshot(data)
       }
     } catch (e) {
@@ -51,7 +56,7 @@ export function useRoutineHabits(session: Session) {
     } })()
     flightRef.current = { token: session.access_token, day, promise }
     return promise
-  }, [session.access_token])
+  }, [session.access_token, resetTime])
 
   useEffect(() => {
     mountedRef.current = true
@@ -65,7 +70,7 @@ export function useRoutineHabits(session: Session) {
     const onFocus = () => {
       if (document.visibilityState !== 'visible') return
       const current = snapshotRef.current
-      const stale = current && current.date !== dateInTimezone(current.timezone)
+      const stale = current && !routineDayIsCurrent(current)
       if (!activationRef.current || stale) void refresh()
     }
     const onVisibility = () => { if (document.visibilityState === 'visible') onFocus() }
@@ -91,7 +96,7 @@ export function useRoutineHabits(session: Session) {
   const setActive = async (id: string, active: boolean) => {
     if (activationRef.current) return
     const current = snapshotRef.current
-    if (!current || snapshotTokenRef.current !== session.access_token || current.date !== dateInTimezone(current.timezone)) { await refresh(); return }
+    if (!current || snapshotTokenRef.current !== session.access_token || snapshotResetRef.current !== resetRef.current || !routineDayIsCurrent(current)) { await refresh(); return }
     activationRef.current = true
     const lifetime = lifetimeRef.current
     setActivation({ id, active })
@@ -104,7 +109,7 @@ export function useRoutineHabits(session: Session) {
     try {
       const updated = await routinesApi.update(session, id, { active })
       if (!mountedRef.current || tokenRef.current !== session.access_token || lifetime !== lifetimeRef.current) return
-      if (version === versionRef.current && current.date === dateInTimezone(current.timezone)) {
+      if (version === versionRef.current && routineDayIsCurrent(current)) {
         const next = { ...current, routines: current.routines.map(routine => routine.id === id ? updated : routine) }
         snapshotRef.current = next
         setSnapshot(next)
@@ -119,7 +124,7 @@ export function useRoutineHabits(session: Session) {
   }
 
   const complete = async (id: string, completed: boolean) => {
-    if (!snapshot || snapshotTokenRef.current !== session.access_token || dateInTimezone(snapshot.timezone) !== snapshot.date) { await refresh(); return }
+    if (!snapshot || snapshotTokenRef.current !== session.access_token || snapshotResetRef.current !== resetRef.current || !routineDayIsCurrent(snapshot)) { await refresh(); return }
     requestRef.current?.abort()
     flightRef.current = null
     setLoading(false)
@@ -127,9 +132,9 @@ export function useRoutineHabits(session: Session) {
     try {
       const result = await routinesApi.complete(session, id, snapshot.date, completed)
       if (!mountedRef.current || tokenRef.current !== session.access_token) return
-      if (version === versionRef.current && result.date === dateInTimezone(result.timezone)) {
-        setSnapshot(current => current ? { ...current, date: result.date, timezone: result.timezone, next_day_at: result.next_day_at, routines: current.routines.map(routine => routine.id === id ? result.routine : routine) } : null)
-        if (snapshotRef.current) snapshotRef.current = { ...snapshotRef.current, date: result.date, timezone: result.timezone, next_day_at: result.next_day_at, routines: snapshotRef.current.routines.map(routine => routine.id === id ? result.routine : routine) }
+      if (version === versionRef.current && routineDayIsCurrent(result)) {
+        setSnapshot(current => current ? { ...current, date: result.date, timezone: result.timezone, day_started_at: result.day_started_at, next_day_at: result.next_day_at, routines: current.routines.map(routine => routine.id === id ? result.routine : routine) } : null)
+        if (snapshotRef.current) snapshotRef.current = { ...snapshotRef.current, date: result.date, timezone: result.timezone, day_started_at: result.day_started_at, next_day_at: result.next_day_at, routines: snapshotRef.current.routines.map(routine => routine.id === id ? result.routine : routine) }
       } else await refresh()
     } catch (e) {
       if (!mountedRef.current || tokenRef.current !== session.access_token) return
@@ -138,6 +143,6 @@ export function useRoutineHabits(session: Session) {
     }
   }
 
-  const ready = Boolean(snapshot && snapshotTokenRef.current === session.access_token && snapshot.date === dateInTimezone(snapshot.timezone))
+  const ready = Boolean(snapshot && snapshotTokenRef.current === session.access_token && snapshotResetRef.current === resetTime && routineDayIsCurrent(snapshot))
   return { routines: ready ? snapshot!.routines : [], date: snapshot?.date || '', loading: loading || (!ready && !error), error, ready, refresh, complete, setActive, activation, activationError, changedId }
 }

@@ -18,6 +18,7 @@ from ..projects.adapters.supabase import SupabaseProjectRepository
 from ..tasks.adapters.supabase import SupabaseTaskRepository
 from ..routines.adapters.supabase import SupabaseRoutineRepository, SupabaseRoutineSummaries
 from ..queries.adapters.supabase import SupabaseActivityRepository
+from ..preferences.adapters.supabase import SupabasePreferencesRepository
 from .domain import User
 
 
@@ -142,6 +143,7 @@ class SupabaseRuntime:
                 SupabaseProjectRepository(database), SupabaseRoutineRepository(database),
                 SupabaseRoutineSummaries(database),
                 SupabaseActivityRepository(database, user),
+                SupabasePreferencesRepository(database, user),
             )
 
     def close(self) -> None:
