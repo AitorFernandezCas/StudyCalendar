@@ -252,3 +252,32 @@ preferencias, adaptador y cálculos del calendario. Ejecutar
 `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_user_settings.sql`
 en una base de pruebas migrada con conexión administrativa; verifica defaults,
 PATCH parcial, restricciones, RLS y permisos anónimos en una transacción revertida.
+
+
+## Estados de proyectos
+
+GET `/api/projects` y bootstrap incluyen `status`: `active`, `inactive` o
+`completed`. POST sin este campo crea un proyecto activo. PATCH con
+`{"status":"inactive"}` (o cualquier otro estado válido) cambia únicamente
+el estado; se rechazan null y otros valores. PATCH de nombre/color conserva
+el estado. Completar un proyecto no modifica ni completa sus tareas.
+
+`/proyectos` agrupa los tres estados y permite mover cualquier proyecto desde
+su selector Estado. `/tareas` conserva solo los proyectos activos y sus tareas
+pendientes, junto con las tareas sin proyecto. Los contadores siguen el mismo
+filtro; el calendario y la actividad conservan todo su historial. Comprobar
+transiciones, recarga, exclusión de proyectos ocultos y recuperación de tareas
+al reactivar. No deben reaparecer como «Sin proyecto» las tareas de un proyecto
+inactivo o completado.
+
+La migración `20261010164339_project_status.sql` ya está aplicada al Supabase
+compartido. Para comprobarla en otra base aislada ANTES de la migración:
+
+```powershell
+psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_project_status.sql
+```
+
+El script revierte migración y fixtures, verifica defaults, restricciones,
+transiciones, PATCH parcial, nombres únicos, preservación de tareas, RLS y
+acceso anónimo. No ejecutarlo contra la base compartida migrada. Las pruebas
+HTTP, del SDK y de visibilidad están en pytest y `npm run test:calendar`.

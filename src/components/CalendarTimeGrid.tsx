@@ -288,10 +288,13 @@ export function CalendarTimeGrid({ days, today, loading, busy, daily, mobileTime
       ''}</p>
     {loading ? <div className="calendar-loading" role="status">Cargando tareas…</div> : <div className="time-grid-scroll" ref={scrollRef}>
       <div className="time-grid-content"><div className="calendar-head"><div className="timezone"><span>Hora local</span><time className="calendar-clock" dateTime={now.toISOString()} aria-label={'Hora actual: ' + currentTime}>{currentTime}</time></div>{days.map(day => <div key={iso(day)} className={'day-head ' + (iso(day) === currentDate ? 'today' : '')}><span>{day.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase()}</span><strong>{day.getDate()}</strong></div>)}</div>
-        <div className="calendar-all-day" aria-label="Tareas de todo el día"><div className="all-day-label">Todo el día</div>{days.map(day => <div key={iso(day)} className="all-day-column" data-date={iso(day)} onClick={event => { if (event.target === event.currentTarget && !busy && !saving) onNewAllDay(iso(day)) }}>
-          {displayedTasks.filter(task => task.allDay && task.date === iso(day)).sort((a, b) => a.title.localeCompare(b.title, 'es')).map(task => <div key={task.id} data-task-id={task.id} className={preview?.task.id === task.id ? 'moving-task' : ''}>{renderAllDayTask(task, moveHandle(task))}</div>)}
-          <button className="all-day-create" disabled={busy || saving} aria-label={'Crear tarea de todo el día el ' + iso(day)} onClick={() => onNewAllDay(iso(day))}>＋</button>
-        </div>)}</div>
+        <div className="calendar-all-day" aria-label="Tareas de todo el día"><div className="all-day-label">Todo el día</div>{days.map(day => {
+          const dayTasks = displayedTasks.filter(task => task.allDay && task.date === iso(day)).sort((a, b) => a.title.localeCompare(b.title, 'es'))
+          return <div key={iso(day)} className="all-day-column" data-date={iso(day)} onClick={event => { if (event.target === event.currentTarget && !busy && !saving) onNewAllDay(iso(day)) }}>
+            {dayTasks.map(task => <div key={task.id} data-task-id={task.id} className={preview?.task.id === task.id ? 'moving-task' : ''}>{renderAllDayTask(task, moveHandle(task))}</div>)}
+            <button className="all-day-create" disabled={busy || saving} aria-label={'Crear tarea de todo el día el ' + iso(day)} onClick={() => onNewAllDay(iso(day))}>＋</button>
+          </div>
+        })}</div>
         <div className="calendar-body" style={{ '--grid-height': `${gridHeight}px` } as CSSProperties}><div className="time-column">{segments.map(segment => <div key={segment.minute} style={{ height: segment.duration / 60 * HOUR_HEIGHT }}>{clockTime(segment.minute)}</div>)}</div>{days.map(day => <div key={iso(day)} className="day-column" data-date={iso(day)}>
           <div className="hour-lines">{segments.map(segment => <button key={segment.minute} style={{ height: segment.duration / 60 * HOUR_HEIGHT }} aria-label={`Crear tarea a las ${clockTime(segment.minute)}`} onClick={() => onNew(iso(day), clockTime(segment.minute))} />)}</div>
           {iso(day) === currentDate && nowMinute >= startMinute && nowMinute < endMinute && <div className="current-time-marker" style={{ top: currentTimeTop }} aria-label={'Ahora, ' + currentTime}>

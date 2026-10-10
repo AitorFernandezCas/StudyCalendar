@@ -108,8 +108,9 @@ el registro, los redirects y el correo en un cambio separado.
 
 ## Migraciones y copias
 
-Las tareas de «Todo el día» requieren la nueva migración
-`20261007144641_task_all_day.sql`. No ejecutar `db push`, resets ni migraciones
+Las tareas de «Todo el día» requieren la migración
+`20261009220556_task_all_day.sql`, aplicada el 10 de octubre de 2026 (Europe/Madrid).
+No ejecutar `db push`, resets ni migraciones
 desde CI/Render. La base existente ya tiene aplicada
 `20261005133423_routine_habits_and_streaks`. Varios identificadores locales antiguos
 no coinciden con el historial remoto; no ejecutar todos los SQL otra vez.
@@ -127,7 +128,7 @@ los SQL locales, reconciliar las versiones sin volver a ejecutar DDL aplicado y
 probar sobre una base de prueba. Los cambios incompatibles requieren coordinar
 base de datos y backend; un rollback de código no revierte una migración.
 
-Para publicar «Todo el día»:
+Para publicar «Todo el día» en otro entorno que todavía no tenga la columna:
 
 1. Comparar el historial remoto con los SQL locales y reconciliar las versiones
    antiguas sin volver a ejecutar DDL aplicado. Crear una copia privada siguiendo
@@ -137,7 +138,7 @@ Para publicar «Todo el día»:
    El script aplica el nuevo SQL dentro de una transacción, comprueba valores
    existentes, restricciones y RLS, y revierte todos sus cambios. Nunca ejecutarlo
    contra producción ni contra una base que ya tenga la columna `all_day`.
-3. Aplicar manualmente solo `20261007144641_task_all_day.sql` al proyecto existente
+3. Aplicar manualmente solo `20261009220556_task_all_day.sql` al proyecto existente
    y registrar su versión conforme al historial reconciliado. No modifica las
    políticas RLS ni las horas; las tareas existentes reciben `all_day=false`.
 4. Desplegar primero el backend y después el frontend tras pasar los checks de CI.
@@ -269,6 +270,83 @@ para SELECT/INSERT/UPDATE. Se verificó la denegación de acceso anónimo, borra
 reasignación del propietario. Los recuentos de las seis tablas anteriores se
 conservaron, `routine_summaries` no cambió y el asesor de seguridad no introdujo
 avisos nuevos. La API REST reconoce la tabla y devuelve `401`/`42501` al intentar
-leerla con la clave pública y sin sesión. `task_all_day` sigue sin aplicarse.
+leerla con la clave pública y sin sesión. En ese momento `task_all_day` seguía sin aplicarse.
 El código nuevo aún requiere
 publicación mediante CI y verificación autenticada en producción.
+
+## Corrección de «Todo el día» — 10 de octubre de 2026
+
+La revisión confirmó que el formulario y la API enviaban `all_day`, pero la base
+compartida todavía carecía de esa columna. El adaptador rechazaba correctamente
+la creación con `409`; faltaba publicar la migración, no cambiar el formulario.
+
+Se comprobó el historial remoto frente a `supabase/MIGRATION_HISTORY.md` y se
+utilizó la constancia de copia privada reciente registrada el 9 de octubre.
+Antes de aplicar se ejecutó `backend/test_task_all_day.sql` en PostgreSQL aislado
+(PGlite), con Auth ficticio y roles `anon`/`authenticated`. Pasaron los checks de
+defaults, restricciones, conversión, PATCH parcial e aislamiento entre usuarios;
+la migración y todas las fixtures se revirtieron en ese entorno.
+
+Se aplicó únicamente `task_all_day` a Supabase, registrada como `20261009220556`
+(9 de octubre UTC, 10 de octubre Europe/Madrid). Se renombró el archivo local,
+antes `20261007144641_task_all_day.sql`, para reflejar la versión remota, sin
+cambiar su SQL ni reparar o reejecutar versiones antiguas.
+
+La columna es `boolean NOT NULL DEFAULT false`. Las 14 tareas anteriores
+mantienen sus valores originales: se comparó la huella de todos los campos
+previos antes y después y coincidió. También se conservaron los recuentos de
+categorías (2), proyectos (3), rutinas (6), períodos (6), completaciones (13) y
+preferencias (1), las cuatro políticas de tareas, RLS y la función de rachas.
+El asesor de seguridad no añadió avisos.
+
+Verificación local: `npm run build`, `npm run test:calendar` (12 pruebas) y
+`python -m pytest backend -q` (165 pruebas) pasaron. En la fixture local del
+navegador se comprobó crear desde la franja «Todo el día», recargar, reabrir y
+editar, con el modo conservado y las horas disponibles al desmarcarlo. La
+vista también se comprobó en mes; la captura local está en
+`docs/screenshots/all-day-task.jpg`. Esta
+comprobación de UI usa datos en memoria; no sustituye una creación con sesión
+real en Render. No se crearon tareas de prueba en la base compartida.
+
+
+## Estados de proyectos — 10 de octubre de 2026
+
+`20261010164339_project_status.sql` añade `Task.projects.status`: `active`,
+`inactive` o `completed`, con `active` por defecto para nuevos proyectos y los
+existentes. Fue comprobada contra el historial remoto y probada en PostgreSQL
+isolado antes de aplicarse únicamente esta migración. Se conservan la propiedad,
+RLS, los campos anteriores de los proyectos y todas sus tareas y completaciones.
+Se utilizó la constancia de copia privada reciente registrada en este documento.
+No se cambiaron las configuraciones globales de Auth ni las tablas del otro proyecto.
+
+Aplicar la migración antes de desplegar el backend y el frontend nuevos. La
+migración ya está aplicada al Supabase compartido; falta publicar el código por CI.
+El backend anterior admite la columna adicional. Un rollback de código conserva
+los estados guardados; no borrar la columna ni volver a aplicar migraciones
+históricas. No se necesitan variables, planes o servicios nuevos.
+
+La API de proyectos devuelve `status` en listados, bootstrap, creación y edición.
+POST sin estado crea un proyecto activo; PATCH con solo `status` cambia su estado
+sin modificar tareas. Se rechazan null y estados desconocidos. Completar un
+proyecto no completa automáticamente sus tareas. Se puede reactivar cualquier
+proyecto y recuperar sus tareas pendientes. La página `/proyectos` conserva
+el historial y agrupa Activos, Inactivos y Completados. `/tareas` muestra solo
+proyectos activos y sus tareas pendientes; las tareas sin proyecto siguen
+apareciendo bajo «Sin proyecto». Su contador excluye los otros estados. El
+calendario y la actividad conservan el historial de todos los proyectos.
+
+Verificación: build correcto, 178 pruebas backend y 15 pruebas de calendario y
+visibilidad correctas. `backend/test_project_status.sql` comprobó defaults,
+estados válidos, PATCH parcial, aislamiento, nombres únicos, denegación anónima,
+conservación de tareas y rollback en PGlite. Después de aplicar se comprobaron
+huellas, recuentos, defaults, check, RLS, políticas y la función de rachas; no
+aparecieron avisos nuevos en el asesor de seguridad. Las pruebas de navegador
+usan la fixture local; la publicación en Render requiere CI y comprobación
+posterior con sesión real.
+
+La fixture del navegador confirmó creación activa por defecto, paso a inactivo
+y completado, persistencia tras recargar, exclusión en `/tareas`, contadores y
+reactivación con las tareas pendientes intactas. La captura de los tres estados
+con datos ficticios está en `docs/screenshots/project-states.jpg`. Se utilizó
+un puerto API local libre (59437), porque otras aplicaciones usaban 5001/5002;
+no se modificaron sus procesos ni los proyectos reales.
