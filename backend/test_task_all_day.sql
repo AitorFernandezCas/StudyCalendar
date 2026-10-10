@@ -21,7 +21,7 @@ from task_day_fixture;
 create temporary table task_day_before as
 select id,start_time,end_time from "Task".tasks;
 
-\ir ../supabase/migrations/20261007144641_task_all_day.sql
+\ir ../supabase/migrations/20261009220556_task_all_day.sql
 
 do $$
 begin

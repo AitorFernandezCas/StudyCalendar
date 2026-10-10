@@ -1,7 +1,8 @@
 import type { Session } from '@supabase/supabase-js'
 
 export type ApiCategory = { id: string; name: string; color: string }
-export type ApiProject = { id: string; name: string; color: string; created_at: string; updated_at: string }
+export type ProjectStatus = 'active' | 'inactive' | 'completed'
+export type ApiProject = { id: string; name: string; color: string; status: ProjectStatus; created_at: string; updated_at: string }
 export type ApiTask = { id: string; title: string; category_id: string | null; project_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string; start_time: string; end_time: string; all_day: boolean; color: string; completed: boolean }
 export type ApiRoutine = { id: string; title: string; color: string; active: boolean; created_at: string; updated_at: string; due_today: boolean; completed_today: boolean; current_streak: number; max_streak: number }
 export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; day_started_at: string; routines: ApiRoutine[] }
@@ -43,7 +44,7 @@ export const categoriesApi = {
 
 export const projectsApi = {
   list: (session: Session) => request<{ projects: ApiProject[] }>('/api/projects', session),
-  create: (session: Session, project: Omit<ApiProject, 'id' | 'created_at' | 'updated_at'>) => request<ApiProject>('/api/projects', session, { method: 'POST', body: JSON.stringify(project) }),
+  create: (session: Session, project: Pick<ApiProject, 'name' | 'color'> & { status?: ProjectStatus }) => request<ApiProject>('/api/projects', session, { method: 'POST', body: JSON.stringify(project) }),
   update: (session: Session, id: string, project: Partial<Omit<ApiProject, 'id' | 'created_at' | 'updated_at'>>) => request<ApiProject>(`/api/projects/${id}`, session, { method: 'PATCH', body: JSON.stringify(project) }),
   remove: (session: Session, id: string) => request<{ deleted: string }>(`/api/projects/${id}`, session, { method: 'DELETE' }),
 }

@@ -119,8 +119,8 @@ def memory():
         "foreign": Category.from_record({"id": "foreign", "name": "Otro", "user_id": "user-2"}),
     })
     projects = MemoryRepository(Project, {
-        "p": Project.from_record({"id": "p", "name": "Examen", "user_id": "user-1"}),
-        "foreign": Project.from_record({"id": "foreign", "name": "Otro", "user_id": "user-2"}),
+        "p": Project.from_record({"id": "p", "name": "Examen", "status": "active", "user_id": "user-1"}),
+        "foreign": Project.from_record({"id": "foreign", "name": "Otro", "status": "active", "user_id": "user-2"}),
     })
     routines = MemoryRoutines()
     repositories = Repositories(tasks, categories, projects, routines, routines)
@@ -602,3 +602,38 @@ def test_failed_client_initialization_closes_transport():
     assert transports[0].close_calls == 1
     assert not runtime.data_clients
     runtime.close()
+
+
+@pytest.mark.parametrize("initial", ["active", "inactive", "completed"])
+def test_project_status_transitions_preserve_tasks_and_sparse_fields(memory, initial):
+    client, repos, _ = memory
+    original_task = repos.tasks.rows["t"]
+    repos.projects.rows["p"] = replace(repos.projects.rows["p"], status=initial)
+    created = client.post("/api/projects", headers=HEADERS, json={"name": "Estado", "status": initial})
+    assert created.status_code == 201
+    assert created.json["status"] == initial
+    for status in ("inactive", "completed", "active"):
+        changed = client.patch("/api/projects/p", headers=HEADERS, json={"status": status})
+        assert changed.status_code == 200
+        assert changed.json["status"] == status
+        assert changed.json["name"] == "Examen"
+        assert repos.projects.writes[-1] == ("update", {"status": status})
+        renamed = client.patch("/api/projects/p", headers=HEADERS, json={"name": "Examen"})
+        assert renamed.json["status"] == status
+        assert repos.tasks.rows["t"] == original_task
+        assert not repos.tasks.writes
+
+
+@pytest.mark.parametrize("status", [None, "archived", "Active", "", True, 1, [], {}])
+def test_project_status_rejects_invalid_values_without_writes(memory, status):
+    client, repos, _ = memory
+    assert client.post("/api/projects", headers=HEADERS, json={"name": "Estado", "status": status}).status_code == 400
+    assert client.patch("/api/projects/p", headers=HEADERS, json={"status": status}).status_code == 400
+    assert not repos.projects.writes
+
+
+def test_project_defaults_to_active(memory):
+    client, _, _ = memory
+    response = client.post("/api/projects", headers=HEADERS, json={"name": "Nuevo"})
+    assert response.status_code == 201
+    assert response.json["status"] == "active"

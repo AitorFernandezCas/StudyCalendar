@@ -10,7 +10,7 @@ class SupabaseProjectRepository:
         return self.database.table("projects")
 
     def list(self) -> list[Project]:
-        rows = self.table().select("id,name,color,created_at,updated_at").order("name").execute().data or []
+        rows = self.table().select("id,name,color,status,created_at,updated_at").order("name").execute().data or []
         return [Project.from_record(row) for row in rows]
 
     def create(self, payload: dict) -> Project:

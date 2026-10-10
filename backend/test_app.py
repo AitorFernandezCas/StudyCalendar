@@ -16,13 +16,13 @@ from tests_support import DatabaseProvider, FixedClock, FixedAuth
 
 @pytest.fixture
 def authenticated_projects_client(monkeypatch):
-    project = {'id': 'project-1', 'name': 'Oposición', 'color': '#ee7b6f', 'created_at': '2026-10-04', 'updated_at': '2026-10-04'}
+    project = {'id': 'project-1', 'name': 'Oposición', 'color': '#ee7b6f', 'status': 'active', 'created_at': '2026-10-04', 'updated_at': '2026-10-04'}
     requests = []
 
     def respond(request):
         requests.append(request)
-        if request.method == 'PATCH':
-            return httpx.Response(200, json=[{**project, 'name': 'Proyecto actualizado'}])
+        if request.method in ('POST', 'PATCH'):
+            project.update(json.loads(request.read()))
         return httpx.Response(201 if request.method == 'POST' else 200, json=[project])
 
     http_client = httpx.Client(transport=httpx.MockTransport(respond), trust_env=False)
@@ -39,7 +39,7 @@ def test_authenticated_project_crud_uses_installed_sdk(authenticated_projects_cl
     created = client.post('/api/projects', headers=headers, json={'name': ' Oposición ', 'color': '#ee7b6f'})
     assert created.status_code == 201
     assert created.json['name'] == 'Oposición'
-    assert json.loads(requests[-1].read()) == {'name': 'Oposición', 'color': '#ee7b6f', 'user_id': 'user-1'}
+    assert json.loads(requests[-1].read()) == {'name': 'Oposición', 'color': '#ee7b6f', 'status': 'active', 'user_id': 'user-1'}
     listed = client.get('/api/projects', headers=headers)
     assert listed.status_code == 200
     assert listed.json['projects'][0]['id'] == 'project-1'
@@ -282,3 +282,20 @@ def test_day_boundary_handles_madrid_dst():
     start = datetime(2026, 10, 25, tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
     end = datetime.fromisoformat(next_day).astimezone(timezone.utc)
     assert (end - start).total_seconds() == 25 * 3600
+
+
+def test_project_status_roundtrip_uses_scoped_sdk_and_sparse_patch(authenticated_projects_client):
+    client, requests = authenticated_projects_client
+    headers = {'Authorization': 'Bearer test-token'}
+    for status in ('inactive', 'completed', 'active'):
+        response = client.patch('/api/projects/project-1', headers=headers, json={'status': status})
+        assert response.status_code == 200
+        assert response.json['status'] == status
+        assert response.json['name'] == 'Oposición'
+        assert json.loads(requests[-1].read()) == {'status': status}
+        assert requests[-1].url.params['id'] == 'eq.project-1'
+        listed = client.get('/api/projects', headers=headers)
+        assert listed.json['projects'][0]['status'] == status
+        assert 'status' in requests[-1].url.params['select'].split(',')
+        bootstrap = client.get('/api/bootstrap?from=2026-10-05&to=2026-10-11', headers=headers)
+        assert bootstrap.json['projects'][0]['status'] == status
