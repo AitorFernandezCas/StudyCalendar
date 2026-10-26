@@ -48,6 +48,7 @@ export function useActivity(session: Session, year: number, revision: number) {
     return () => window.clearTimeout(timer)
   }, [result, key, refresh])
 
-  const snapshot = !loading && !error && result?.key === key && result.snapshot.date === dateInTimezone(result.snapshot.timezone) ? result.snapshot : null
+  // Keep today's chart mounted during background refreshes so keyboard focus is preserved.
+  const snapshot = !error && result?.key === key && result.snapshot.date === dateInTimezone(result.snapshot.timezone) ? result.snapshot : null
   return { snapshot, loading, error, refresh }
 }
