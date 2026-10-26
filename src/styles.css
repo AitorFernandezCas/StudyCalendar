@@ -541,3 +541,121 @@ button.activity-cell { cursor: pointer; }
 .project-status-control select:focus-visible{outline:2px solid #7056ed;outline-offset:2px}
 .project-status-control select:disabled{opacity:.6;cursor:wait}
 @media(max-width:650px){.project-status-control select{min-height:44px}.project-status-sections{gap:12px}}
+
+/* Task-first overview, shared forms, and stable navigation. */
+.skip-link{position:fixed;top:8px;left:8px;z-index:40;transform:translateY(-160%);background:#fff;color:#5135c7;padding:12px 18px;border:2px solid #7056ed;border-radius:8px}
+.skip-link:focus{transform:none}
+button:focus-visible,a:focus-visible{outline:2px solid #684df0;outline-offset:3px}
+button:disabled{cursor:wait}
+@media(min-width:651px){
+  .sidebar,.sidebar:hover,.sidebar:focus-within{width:224px;transition:none;padding:26px 12px 20px}
+  .sidebar .brand{padding:0 6px;gap:9px;margin-bottom:40px}
+  .sidebar .brand>span,.sidebar:hover .brand>span,.sidebar:focus-within .brand>span{max-width:180px;opacity:1;transform:none;font-size:15px;transition:none}
+  .sidebar .brand>span>span{display:block;line-height:1.3}
+  .sidebar .nav-item{gap:10px;padding:0 10px;min-height:46px;overflow:visible}
+  .sidebar .nav-item .nav-label,.sidebar:hover .nav-label,.sidebar:focus-within .nav-label{max-width:none;opacity:1;transform:none;margin-left:0;font-size:14px;color:inherit;transition:none}
+  .sidebar .nav-item b,.sidebar:hover .nav-item b,.sidebar:focus-within .nav-item b{max-width:none;opacity:1;margin-left:auto;color:#5843ad;font-size:12px;transition:none}
+  .sidebar .side-bottom{padding:10px 0 0}
+  .sidebar .user{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px;padding:18px 6px 0}
+  .sidebar .user>span,.sidebar:hover .user>span,.sidebar:focus-within .user>span{max-width:none;margin:0;opacity:1;transform:none;transition:none}
+  .sidebar .logout,.sidebar:hover .logout,.sidebar:focus-within .logout{grid-column:1/-1;max-width:none;opacity:1;transform:none;pointer-events:auto;margin:4px 0 0;padding:8px;border:1px solid #e1e4eb;border-radius:7px;transition:none;min-height:36px;color:#596273}
+  .main{--main-gutter:36px;padding-right:var(--main-gutter);padding-left:var(--main-gutter)}
+}
+@media(min-width:651px) and (max-width:1000px){.sidebar,.sidebar:hover,.sidebar:focus-within{width:200px}.main{--main-gutter:22px}}
+.today-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:24px 0 20px}
+.today-summary h2{font-size:22px;margin:0 0 6px;color:#343e51}
+.today-summary p{font-size:14px;color:#596273;margin:0;line-height:1.6}
+.overdue-summary{font-size:13px;color:#a13640;background:#fff0f1;border:1px solid #f2cbd0;padding:8px 12px;border-radius:20px}
+.overview-sections{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:start}
+.overview-section{padding:18px}
+.overview-section-head h3{font-size:17px}
+.section-count{font-size:12px!important}
+.date-group h4{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;color:#424b5d;margin:20px 0 10px}
+.date-group h4 span{font-size:12px;font-weight:500;color:#626b7c}
+.date-group.overdue h4{color:#a13640}
+.date-group+.date-group{margin-top:18px;border-top:1px solid #e9ebf1}
+.empty-state{padding:12px 0;font-size:14px;color:#626b7c;line-height:1.6}
+.new-project-button{font:600 13px 'DM Sans',sans-serif;min-height:40px;padding:8px 12px}
+.overview-task{gap:10px;padding:12px;cursor:default}
+.overview-edit-button{border:0;background:transparent;padding:3px 0;text-align:left;font:inherit;color:inherit;cursor:pointer;min-width:0;flex:1;border-radius:4px}
+.overview-task-main strong{font-size:14px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.overview-task-main:focus-visible strong,.overview-task-main:hover strong{-webkit-line-clamp:unset}
+.overview-task-main small,.projects-view .overview-task-main small{display:block;font-size:12px;color:#626b7c;line-height:1.6;margin-top:4px}
+.overview-category{font-size:11px;line-height:1.5;color:#5c4d87;background:#f2effa;padding:3px 6px;border-radius:5px;max-width:100px;white-space:normal;overflow-wrap:anywhere}
+.overview-empty,.settings-empty,.settings-description,.projects-copy{color:#626b7c;font-size:13px;line-height:1.6}
+.routine-streaks,.routine-status{font-size:12px;color:#626b7c}
+.habit-group h4{font-size:14px}
+.overview-task .task-actions .task-completion-button,.habit-completion{width:36px;height:36px}
+.overview-task .task-actions .delete-task{display:inline-flex;align-items:center;justify-content:center;width:32px;height:36px;color:#925058;opacity:1!important}
+.task-actions button:disabled,.overview-edit-button:disabled{opacity:.6}
+.task-card .task-time,.task-card .task-meta>span{font-size:12px;color:#626b7c}
+.task-card .task-title{font-size:13px}
+.task-card .task-actions,.all-day-task .task-actions{align-items:center;gap:4px}
+.task-card .task-actions button,.all-day-task .task-actions button{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px}
+.task-card .task-actions .delete-task,.all-day-task .task-actions .delete-task{color:#925058}
+.month-more{display:block;border:0;border-radius:5px;background:#f0edff;color:#5135b8;font:600 12px 'DM Sans',sans-serif;padding:7px 8px;cursor:pointer;width:100%;text-align:left}
+.month-more:hover{background:#e6dfff}
+.month-task{font-size:12px;line-height:1.5}
+.day-agenda-modal{width:min(720px,100%)}
+.day-agenda-modal .overview-list{margin-top:8px}
+.day-agenda-modal .overview-category{display:none}
+.modal .form-fields,.modal .color-field{min-width:0;border:0;padding:0;margin:0}
+.modal .form-fields{display:block}
+.modal .form-fields:disabled{opacity:.75}
+.modal label,.color-field legend{font-size:13px;font-weight:600;line-height:1.5;color:#4f596c}
+.color-field legend{padding:0;margin-top:16px}
+.color-field .color-picker{margin-bottom:16px}
+.color-picker button{width:36px;height:36px}
+.form-error{padding:10px 12px;background:#fff0f1;border:1px solid #edc8cd;border-radius:7px;font-size:13px;line-height:1.6;color:#9d303c;margin:8px 0 14px}
+.modal input[aria-invalid=true],.modal select[aria-invalid=true]{border-color:#b84351}
+.modal input,.modal select{font-family:'DM Sans',sans-serif;font-size:14px}
+.form-grid>.project-field{min-width:0}
+.form-hint{font-size:12px;line-height:1.6;color:#626b7c;margin:6px 0 12px}
+.inline-create{border:1px solid #d9d2ff;border-radius:7px;background:#f5f2ff;color:#5135b8;font:600 13px 'DM Sans',sans-serif;padding:9px 12px;cursor:pointer;min-height:40px}
+.modal-actions button{min-height:44px;font-family:'DM Sans',sans-serif}
+.modal-actions .save:disabled{opacity:.65}
+.action-notice{position:fixed;z-index:15;left:250px;bottom:20px;display:flex;align-items:center;gap:12px;max-width:min(680px,calc(100vw - 280px));padding:14px 16px;border-radius:12px;border:1px solid #d6caff;background:#fff;color:#343e51;box-shadow:0 5px 25px #252d3d22}
+.action-notice p{font-size:14px;line-height:1.5;margin:0;overflow-wrap:anywhere;min-width:0}
+.action-notice button{flex:none;border:0;background:transparent;color:#5135b8;min-height:36px;font:600 14px 'DM Sans',sans-serif;cursor:pointer}
+.action-notice button[aria-label]{font-size:22px;width:32px}
+.action-notice .undo-action{text-decoration:underline;text-underline-offset:3px}
+.action-notice.inline-notice{position:static;max-width:none;margin:0 0 16px;box-shadow:none;flex-wrap:wrap}
+.activity-history{margin-top:24px}
+.activity-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;border:0;background:transparent;text-align:left;color:#343e51;font:inherit;padding:2px;cursor:pointer}
+.activity-toggle strong{display:block;font-size:16px}
+.activity-toggle small{display:block;font-size:13px;line-height:1.6;color:#626b7c;margin-top:4px}
+.activity-toggle>span:last-child{font-size:13px;font-weight:600;color:#5135b8;white-space:nowrap}
+.activity-chart-panel{margin-top:24px;border-top:1px solid #e8e5ef;padding-top:20px}
+.activity-keyboard-hint{font-size:12px;color:#626b7c;line-height:1.5}
+.activity-scroll:focus-within{outline:1px solid #b8a9ec;border-radius:4px}
+.time-output{display:flex;align-items:center;height:44px;border:1px solid #d9dce6;border-radius:8px;background:#f5f6fa;padding:0 10px;color:#4f596c;font:400 14px 'DM Sans',sans-serif}
+.auth-error{color:#9d303c}
+.auth-switch{display:block;width:100%;line-height:1.5;padding:8px 0}
+.auth-message{line-height:1.6}
+@media(max-width:1100px){
+  .overview-sections{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:650px){
+  .today-summary{margin:20px 0 16px;gap:10px}
+  .today-summary h2{font-size:20px}
+  .overview-section{padding:16px}
+  .overview-task .task-actions .task-completion-button,.overview-task .task-actions .delete-task,.habit-completion{width:44px;height:44px}
+  .overview-task{gap:8px}
+  .overview-task .overview-category{font-size:12px;max-width:none;justify-self:start}
+  .overview-task-main strong{font-size:14px}
+  .daily-habit .habit-completion{grid-column:2;grid-row:1}
+  .task-card .task-actions button{width:44px;height:44px}
+  .time-grid .task-card .task-actions button,.all-day-task .task-actions button{width:32px;height:32px}
+  .month-task{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;overflow:hidden;font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+  .month-more{font-size:11px;padding:7px 1px;text-align:center;min-height:32px}
+  .month-day-number{min-height:40px}
+  .modal input,.modal select{font-size:16px}
+  .task-modal .form-grid{grid-template-columns:minmax(0,1fr);gap:0}
+  .task-modal .form-grid.schedule-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .color-picker button{width:44px;height:44px}
+  .action-notice{left:12px;right:12px;bottom:calc(88px + env(safe-area-inset-bottom));max-width:none;padding:12px;gap:8px;flex-wrap:wrap}
+  .action-notice p{flex:1 1 180px}
+  .action-notice button{min-height:44px}
+  .activity-toggle{align-items:flex-start;flex-direction:column;gap:10px}
+  .activity-history{padding:16px}
+}

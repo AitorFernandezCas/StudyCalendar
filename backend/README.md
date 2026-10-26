@@ -254,6 +254,40 @@ en una base de pruebas migrada con conexión administrativa; verifica defaults,
 PATCH parcial, restricciones, RLS y permisos anónimos en una transacción revertida.
 
 
+## Comprobación de la experiencia de uso
+
+Con la fixture desechable, abrir `/` antes de visitar `/tareas`: el contador de
+pendientes debe esperar al listado completo y conservar el mismo total en ambas
+pantallas, incluyendo tareas atrasadas/futuras y excluyendo proyectos inactivos.
+En `/tareas`, comprobar que el resumen da paso directamente a las secciones, sin
+buscador ni filtros. Las tareas personales pendientes se separan en Atrasadas,
+Hoy y Próximas; las completadas se consultan en el calendario y el historial de
+proyectos. Completar y deshacer
+deben actualizar el listado, el contador y la actividad, también para rutinas.
+
+Recargar tras plegar una sección y comprobar que se conserva su estado para ese
+usuario. El historial anual empieza plegado; al abrirlo, Tab entra una sola vez
+en los días y las flechas los recorren sin perder el foco al volver a la ventana.
+En móvil, el resumen precede directamente a las tareas. Comprobar ausencia de
+desbordamiento a 320 px.
+
+Crear un proyecto dentro de una tarea, guardar y verificar que se conserva el
+borrador y se selecciona el proyecto nuevo. Los proyectos no activos solo se
+ofrecen cuando ya están asociados a una tarea existente. Probar nombre vacío y
+duplicado: el error debe aparecer dentro del diálogo y enfocar Nombre. Tab no
+sale del diálogo, Escape lo cierra y devuelve el foco al control de apertura;
+esto también se aplica a los diálogos anidados y a categorías.
+
+En el mes, pulsar «+N más» y comprobar que la agenda contiene todas las tareas
+de esa fecha/categoría, incluidas las que quedan fuera del horario configurado.
+Crear, editar y deshacer desde esa agenda no debe perder el contexto. Mantener
+la verificación de arrastre, todo el día y teclado descrita anteriormente.
+
+`npm run test:calendar` incluye los casos puros de filtros, agrupación de fechas,
+orden y duración. La recuperación de contraseña debe verificarse con un proveedor
+simulado sin enviar correos desde la fixture; la entrega real y los redirects se
+comprueban aparte siguiendo `DEPLOYMENT.md`.
+
 ## Estados de proyectos
 
 GET `/api/projects` y bootstrap incluyen `status`: `active`, `inactive` o

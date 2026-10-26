@@ -31,7 +31,7 @@ export function PreferencesForm({ settings }: { settings: ReturnType<typeof useS
     setMessage('')
     setSaveError('')
   }
-  const timeField = (name: keyof Draft, label: string) => <label>{label}<input type="time" aria-label={label} step="60" required value={draft[name] === '24:00' ? '' : draft[name]} disabled={settings.saving || (name === 'calendar_end_time' && draft[name] === '24:00')} aria-invalid={Boolean(fields[name])} aria-describedby={fields[name] ? `setting-${name}-error` : undefined} onInput={event => change(name, event.currentTarget.value)} onChange={event => change(name, event.target.value)} />{fields[name] && <span id={`setting-${name}-error`} className="settings-field-error">{fields[name]}</span>}</label>
+  const timeField = (name: keyof Draft, label: string) => <label>{label}{draft[name] === '24:00' ? <output className="time-output" aria-label={label}>24:00 · Medianoche</output> : <input type="time" aria-label={label} step="60" required value={draft[name]} disabled={settings.saving} aria-invalid={Boolean(fields[name])} aria-describedby={fields[name] ? `setting-${name}-error` : undefined} onChange={event => change(name, event.target.value)} />}{fields[name] && <span id={`setting-${name}-error`} className="settings-field-error">{fields[name]}</span>}</label>
   return <form className="preferences-form" onSubmit={async event => {
     event.preventDefault()
     if (draft.calendar_start_time >= draft.calendar_end_time) { setFields({ calendar_end_time: 'La hora de fin debe ser posterior al inicio.' }); return }

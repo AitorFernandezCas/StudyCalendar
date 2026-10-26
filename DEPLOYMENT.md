@@ -106,6 +106,21 @@ compartido de Supabase. El acceso inicial usa la cuenta existente y no necesita
 confirmaciones nuevas por correo. Si posteriormente se añaden usuarios, tratar
 el registro, los redirects y el correo en un cambio separado.
 
+La interfaz incluye recuperación de contraseña: `resetPasswordForEmail` solicita
+el correo con `redirectTo` igual al origen actual y `/`. El evento
+`PASSWORD_RECOVERY` abre el formulario de nueva contraseña, que llama a
+`updateUser`, valida la confirmación y vuelve a `/tareas`. Los errores del proveedor
+se presentan en español; no se registran contraseñas ni tokens.
+
+Antes de habilitar el envío real en un entorno publicado, comprobar que su URL
+raíz exacta está permitida en Auth > URL Configuration > Redirect URLs. Para el
+frontend publicado es `https://studycalendar.onrender.com/`; en desarrollo es
+`http://localhost:5173/`. No sustituir el Site URL del proyecto compartido ni
+cambiar SMTP, registro u otros redirects existentes. Esta implementación se ha
+comprobado con un proveedor simulado en localhost, sin enviar correos ni cambiar
+la configuración compartida; queda pendiente la comprobación de entrega y retorno
+con un email real en cada entorno autorizado.
+
 ## Migraciones y copias
 
 Las tareas de «Todo el día» requieren la migración
