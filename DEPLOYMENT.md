@@ -59,7 +59,8 @@ ejecuciones manuales. Los trabajos Frontend y Backend son independientes; `CI
 completa` exige que ambos terminen correctamente, incluso si alguno se cancela o
 se omite. CI usa URLs y claves ficticias, no credenciales de Supabase.
 
-El frontend instala el lockfile con `npm ci`, verifica la validación de entorno y
+El frontend ejecuta sus comandos desde `frontend/`, instala el lockfile con
+`npm ci`, verifica la validación de entorno y
 compila TypeScript/Vite. El backend ejecuta pytest y arranca la entrada real
 `wsgi:app` mediante Gunicorn en Linux: comprueba salud, `401` sin sesión y CORS.
 El check de salud verifica el proceso HTTP, no la disponibilidad de Supabase.
@@ -86,7 +87,8 @@ entornos de preview que consuman otra instancia del backend.
    `https://frontend-pendiente.invalid` como `FRONTEND_ORIGIN`; no autorizar `*`.
    Guardar la URL asignada realmente por Render; no deducirla del nombre del servicio.
 5. Crear **New > Static Site**, mismo repositorio y `main`, raíz del repositorio,
-   build `npm ci && npm run build:production`, salida `dist`. Introducir las tres
+   build `npm --prefix frontend ci && npm --prefix frontend run build:production`,
+   salida `frontend/dist`. Introducir las tres
    variables `VITE_`, incluyendo la URL real del backend.
 6. Añadir la reescritura `/*` hacia `/index.html` y los headers de `render.yaml`.
    Registrar la URL real del frontend en `FRONTEND_ORIGIN` y redesplegar el backend.
@@ -100,6 +102,23 @@ crear los servicios en el orden anterior. Para incorporar servicios existentes a
 un Blueprint, usar sus nombres exactos y revisar el resumen antes de sincronizar
 para no crear servicios duplicados. El plan del backend es explícitamente `free`;
 los sitios estáticos no tienen campo `plan`.
+
+### Traslado del frontend a `frontend/`
+
+El código React, `public/`, los scripts de Node, `package.json`, su lockfile,
+las configuraciones Vite/TypeScript y los archivos `.env` del frontend se ubican
+ahora en `frontend/`. El ejemplo local es `frontend/.env.example`; Vite carga
+`frontend/.env`. `.node-version` permanece en la raíz del repositorio.
+
+Antes de publicar esta reorganización, actualizar el servicio estático existente
+`studycalendar` si se administra desde el panel de Render: conservar la raíz del
+servicio en la raíz del repositorio, cambiar **Build Command** a
+`npm --prefix frontend ci && npm --prefix frontend run build:production` y
+**Publish Directory** a `frontend/dist`. Conservar variables, reescritura,
+headers y despliegue tras checks satisfactorios. El backend no requiere cambios.
+Estas rutas ya están reflejadas en `render.yaml`; editar el manifiesto no actualiza
+por sí solo un servicio creado manualmente. No se han cambiado ajustes del
+servicio publicado como parte de esta reorganización local.
 
 No cambiar el Site URL, SMTP, registro global ni otras opciones de Auth del proyecto
 compartido de Supabase. El acceso inicial usa la cuenta existente y no necesita

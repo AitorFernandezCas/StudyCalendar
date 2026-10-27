@@ -40,7 +40,7 @@ Desde la raíz:
 ```powershell
 python backend/app.py
 python -m pytest backend -q
-npm run build
+npm --prefix frontend run build
 ```
 
 Se conservan app y create_app en app.py y app en wsgi.py. No se crea ninguna
@@ -183,7 +183,7 @@ Terminal 2, desde la raíz:
 $env:VITE_API_URL='http://127.0.0.1:5001'
 $env:VITE_SUPABASE_URL='http://127.0.0.1:5001'
 $env:VITE_SUPABASE_PUBLISHABLE_KEY='demo-key'
-npm run dev -- --host 127.0.0.1 --port 5180 --strictPort
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5180 --strictPort
 ```
 
 Abrir http://localhost:5180 e iniciar sesión con demo@example.invalid y cualquier
@@ -211,7 +211,7 @@ o fallar el guardado. Con teclado, enfocar el asa, usar flechas (arriba/abajo pa
 15 minutos, izquierda/derecha para otro día), Enter para guardar y Esc para cancelar.
 Los horarios se mantienen dentro de la fecha, sin cruzar medianoche.
 
-Ejecutar `npm run test:calendar` para verificar ajuste de slots, duración y límites;
+Ejecutar `npm --prefix frontend run test:calendar` para verificar ajuste de slots, duración y límites;
 CI ejecuta estas pruebas con Node 24. Verificar también arrastre táctil, scroll
 automático, tareas solapadas, cancelación, fallo de PATCH y persistencia tras recarga.
 
@@ -220,7 +220,7 @@ con recuperación de horas, varias tarjetas por día, filtros y completado; arra
 en ambos sentidos entre franja y horas (intervalos de 15 minutos, límites de
 23:30–23:45), movimiento en mes y persistencia tras recarga. En mes aparecen
 primero y en tareas/proyectos muestran «Todo el día». Las rutinas no ofrecen esta
-opción. `node --test scripts/task-scheduling.test.mjs` verifica los cálculos de
+opción. `node --test frontend/scripts/task-scheduling.test.mjs` verifica los cálculos de
 horarios con Node 24. La prueba `test_task_all_day.sql` requiere una base de prueba
 aislada anterior a la nueva migración; ver `DEPLOYMENT.md`.
 ## Preferencias personales
@@ -247,7 +247,7 @@ Guardar un intervalo incorrecto debe mostrar error sin perder el borrador. Para
 probar un día efectivo anterior, configurar una hora posterior a la actual y
 verificar creación, completado/desmarcado y sincronización entre tareas y rutinas.
 
-`python -m pytest backend -q` y `npm run test:calendar` cubren límites, DST,
+`python -m pytest backend -q` y `npm --prefix frontend run test:calendar` cubren límites, DST,
 preferencias, adaptador y cálculos del calendario. Ejecutar
 `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_user_settings.sql`
 en una base de pruebas migrada con conexión administrativa; verifica defaults,
@@ -283,7 +283,7 @@ de esa fecha/categoría, incluidas las que quedan fuera del horario configurado.
 Crear, editar y deshacer desde esa agenda no debe perder el contexto. Mantener
 la verificación de arrastre, todo el día y teclado descrita anteriormente.
 
-`npm run test:calendar` incluye los casos puros de filtros, agrupación de fechas,
+`npm --prefix frontend run test:calendar` incluye los casos puros de filtros, agrupación de fechas,
 orden y duración. La recuperación de contraseña debe verificarse con un proveedor
 simulado sin enviar correos desde la fixture; la entrega real y los redirects se
 comprueban aparte siguiendo `DEPLOYMENT.md`.
@@ -314,4 +314,4 @@ psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_project_status.sql
 El script revierte migración y fixtures, verifica defaults, restricciones,
 transiciones, PATCH parcial, nombres únicos, preservación de tareas, RLS y
 acceso anónimo. No ejecutarlo contra la base compartida migrada. Las pruebas
-HTTP, del SDK y de visibilidad están en pytest y `npm run test:calendar`.
+HTTP, del SDK y de visibilidad están en pytest y `npm --prefix frontend run test:calendar`.
