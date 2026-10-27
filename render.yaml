@@ -27,8 +27,8 @@ services:
     runtime: static
     branch: main
     autoDeployTrigger: checksPass
-    buildCommand: npm ci && npm run build:production
-    staticPublishPath: ./dist
+    buildCommand: npm --prefix frontend ci && npm --prefix frontend run build:production
+    staticPublishPath: ./frontend/dist
     envVars:
       - key: VITE_API_URL
         sync: false
