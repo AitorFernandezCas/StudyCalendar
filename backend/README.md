@@ -265,9 +265,51 @@ Hoy y Próximas; las completadas se consultan en el calendario y el historial de
 proyectos. Completar y deshacer
 deben actualizar el listado, el contador y la actividad, también para rutinas.
 
+Los bloques de `/tareas` usan filas compactas con completar a la izquierda,
+título y metadatos en el centro y eliminar a la derecha. Verificar edición,
+confirmación de eliminación y creación desde la cabecera o desde un proyecto.
+Con al menos 860 px de ancho de contenido, tareas y proyectos comparten la
+columna principal y las rutinas ocupan la lateral; con menos espacio se apilan.
+Los proyectos con pendientes aparecen primero y los que están al día conservan
+su desplegable. Solo las tareas sin asociación se agrupan en «Sin proyecto».
+Comprobar títulos largos, rachas completas, controles de 44 px en móvil y los
+accesos de gestión de las cabeceras, incluso con el bloque plegado.
+
+En `/proyectos`, los bloques Activos, Inactivos y Completados usan listas con
+separadores, sin tarjetas anidadas. El resumen de cada proyecto muestra pendientes,
+completadas y progreso incluso cerrado, con el selector de estado siempre visible.
+Comprobar los seis cambios de estado entre los tres grupos, conservación del foco
+en el selector tras mover el proyecto, recarga y preservación del historial.
+Abrir el detalle para editar/eliminar el proyecto, consultar pendientes/completadas
+y añadir tareas a proyectos activos. Revisar nombres largos y grupos vacíos a
+320 y 390 px, además de la vista de escritorio.
+
+En `/rutinas`, Activas e Inactivas muestran filas con título, color y ambas
+rachas, botones de texto Pausar/Activar y eliminación secundaria. El contador
+de rutinas se separa de las pendientes de hoy; las activas futuras indican
+«No prevista para hoy» y no aumentan los pendientes. Comprobar pausa/reactivación
+con ratón y teclado, apertura del bloque de destino, recuperación del foco y
+conservación del historial. Revisar edición, errores de activación, nombres
+largos y controles de 44 px a 320 y 390 px. Los bloques conservan su plegado.
+
+En `/configuracion`, preferencias y categorías aparecen en dos columnas a partir
+de 900 px de contenido, y se apilan con menos espacio. Comprobar el aviso de cambios
+sin guardar, Guardar/Descartar, errores de intervalo con foco en la hora de fin y
+el final especial 24:00. Crear o editar categorías debe conservar el borrador de
+preferencias. Revisar nombres largos, etiquetas, controles de 44 px y ausencia de
+desbordamiento a 320 y 390 px; recargar tras guardar para verificar persistencia.
+
 Recargar tras plegar una sección y comprobar que se conserva su estado para ese
 usuario. El historial anual empieza plegado; al abrirlo, Tab entra una sola vez
 en los días y las flechas los recorren sin perder el foco al volver a la ventana.
+El resumen anual cuenta completadas, días con avances y días con todo completado,
+excluyendo fechas futuras. El mapa distingue completo, parcial, sin completar,
+sin tareas y futuro; el detalle muestra fecha, completadas/total y pendientes.
+Comprobar Inicio/Fin, límites del año, años bisiestos, navegación diaria de 44 px,
+cambio de año y retorno a «Este año». Las recargas en segundo plano conservan
+la cuadrícula y la selección del mismo usuario/año, también si falla la lectura;
+un cambio de sesión, año o día invalida los datos anteriores. En móvil solo el
+mapa se desplaza horizontalmente. `test:calendar` incluye sus cálculos y límites.
 En móvil, el resumen precede directamente a las tareas. Comprobar ausencia de
 desbordamiento a 320 px.
 
