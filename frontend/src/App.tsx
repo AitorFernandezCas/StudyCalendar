@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { bootstrapApi, calendarApi, categoriesApi, projectsApi, routinesApi, tasksApi, type ApiCategory, type ApiProject, type ApiRoutine, type ApiTask, type ProjectStatus } from './lib/api'
 import { CalendarTimeGrid } from './components/CalendarTimeGrid'
+import { CardMetadata } from './components/CardMetadata'
 import type { Task, TaskType } from './lib/taskTypes'
 import type { TaskSchedule } from './lib/calendarDrag'
 import { ActivityHeatmap } from './components/ActivityHeatmap'
@@ -71,13 +72,14 @@ function MobileNavigation({ screen, onNavigate }: { screen: Screen; onNavigate: 
 }
 
 function TaskCard({ task, categoryName, onEdit, onToggle, onDelete, draggable = true, moveHandle, busy = false }: { task: Task; categoryName: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; draggable?: boolean; moveHandle?: React.ReactNode; busy?: boolean }) {
-  return <article draggable={draggable && !busy} onDragStart={e => e.dataTransfer.setData('task', task.id)} onClick={e => { e.stopPropagation(); if (!busy) onEdit(task) }} className={'task-card ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
-    {moveHandle}<div className="task-time">{taskTimeLabel(task)}</div>
+  return <article draggable={draggable && !busy} onDragStart={e => e.dataTransfer.setData('task', task.id)} onClick={e => { e.stopPropagation(); if (!busy) onEdit(task) }} className={'work-card task-card ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
+    <CardMetadata label={taskTimeLabel(task)} detail={categoryName} tagged />
     <button disabled={busy} draggable={draggable} className="task-title task-edit-button" title={task.title} aria-label={'Editar tarea ' + task.title} onClick={e => { e.stopPropagation(); onEdit(task) }}>{task.title}</button>
-    <div className="task-meta"><span>{categoryName}</span><div className="task-actions">
+    <div className="work-card-footer task-actions">
+      {moveHandle}
       <button disabled={busy} aria-pressed={task.done} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={e => { e.stopPropagation(); onToggle(task.id) }}><CompletionIcon completed={task.done} /></button>
       <button disabled={busy} className="delete-task" title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={e => { e.stopPropagation(); onDelete(task.id) }}><DeleteIcon /></button>
-    </div></div>
+    </div>
   </article>
 }
 
@@ -109,10 +111,11 @@ function MobileCalendarAgenda({ days, label, hidden, today, loading, visible, ca
   </section>
 }
 
-function AllDayTaskCard({ task, onEdit, onToggle, onDelete, draggable = true, moveHandle, busy = false }: { task: Task; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; draggable?: boolean; moveHandle?: React.ReactNode; busy?: boolean }) {
-  return <article draggable={draggable} onDragStart={e => e.dataTransfer.setData('task', task.id)} className={'all-day-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
-    {moveHandle}<button disabled={busy} draggable={draggable} className="all-day-task-title" title={task.title} aria-label={'Editar tarea ' + task.title} onClick={e => { e.stopPropagation(); onEdit(task) }}>{task.title}</button>
-    <div className="task-actions"><button disabled={busy} aria-pressed={task.done} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={e => { e.stopPropagation(); onToggle(task.id) }}><CompletionIcon completed={task.done} /></button><button disabled={busy} className="delete-task" title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={e => { e.stopPropagation(); onDelete(task.id) }}><DeleteIcon /></button></div>
+function AllDayTaskCard({ task, categoryName, onEdit, onToggle, onDelete, draggable = true, moveHandle, busy = false }: { task: Task; categoryName: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; draggable?: boolean; moveHandle?: React.ReactNode; busy?: boolean }) {
+  return <article draggable={draggable && !busy} onDragStart={e => e.dataTransfer.setData('task', task.id)} className={'work-card all-day-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
+    <CardMetadata label={taskTimeLabel(task)} detail={categoryName} tagged />
+    <button disabled={busy} draggable={draggable} className="all-day-task-title" title={task.title} aria-label={'Editar tarea ' + task.title} onClick={e => { e.stopPropagation(); onEdit(task) }}>{task.title}</button>
+    <div className="work-card-footer task-actions">{moveHandle}<button disabled={busy} aria-pressed={task.done} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={e => { e.stopPropagation(); onToggle(task.id) }}><CompletionIcon completed={task.done} /></button><button disabled={busy} className="delete-task" title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={e => { e.stopPropagation(); onDelete(task.id) }}><DeleteIcon /></button></div>
   </article>
 }
 
@@ -128,8 +131,9 @@ function ActionNotice({ notice, busy, onDismiss, inline = false }: { notice: { m
 }
 
 function OverviewTask({ task, categoryName, projectName, onEdit, onToggle, onDelete, busy = false }: { task: Task; categoryName: string; projectName?: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; busy?: boolean }) {
-  return <article className={'overview-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
-    <button disabled={busy} className="overview-task-main overview-edit-button" aria-label={'Editar tarea ' + task.title} onClick={() => onEdit(task)}><strong title={task.title}>{task.title}</strong><small>{projectName && projectName + ' · '}<time dateTime={task.date} title={new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' })}>{relativeTaskDate(task.date, iso(new Date()))}</time>{' · ' + taskTimeLabel(task)}</small></button><span className="overview-category">{categoryName}</span><div className="task-actions"><button disabled={busy} className="task-completion-button" aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}>
+  return <article className={'work-card overview-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
+    <CardMetadata label={taskTimeLabel(task)} detail={categoryName} tagged />
+    <button disabled={busy} className="overview-task-main overview-edit-button" aria-label={'Editar tarea ' + task.title} onClick={() => onEdit(task)}><strong title={task.title}>{task.title}</strong><small>{projectName && projectName + ' · '}<time dateTime={task.date} title={new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' })}>{relativeTaskDate(task.date, iso(new Date()))}</time></small></button><div className="work-card-footer task-actions"><button disabled={busy} className="task-completion-button" aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}>
     <CompletionIcon completed={task.done} />
   </button><button disabled={busy} className="delete-task" title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={() => onDelete(task.id)}><DeleteIcon /></button></div></article>
 }
@@ -149,9 +153,10 @@ function DailyHabits({ habits, busy, onComplete }: { habits: ReturnType<typeof u
   return <div className="daily-habits">{habits.error && <RoutineLoadState habits={habits} />}{[false, true].map(completed => {
     const group = due.filter(routine => routine.completed_today === completed)
     return <section className="habit-group" key={String(completed)}><h4>{completed ? 'Completadas hoy' : 'Pendientes de hoy'} <span>{group.length}</span></h4>
-      {group.length ? <div className="overview-list">{group.map(routine => <article className={'overview-task daily-habit ' + (completed ? 'done' : '')} key={routine.id} style={{ '--task-color': routine.color } as React.CSSProperties}>
-        <div className="overview-task-main"><strong>{routine.title}</strong><RoutineStreaks routine={routine} /></div>
-        <button className="habit-completion" disabled={busy} aria-pressed={completed} title={completed ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(completed ? 'Marcar como pendiente ' : 'Marcar como completada ') + routine.title} onClick={() => onComplete(routine)}><CompletionIcon completed={completed} /></button>
+      {group.length ? <div className="overview-list">{group.map(routine => <article className={'work-card overview-task daily-habit ' + (completed ? 'done' : '')} key={routine.id} style={{ '--task-color': routine.color } as React.CSSProperties}>
+        <CardMetadata label="Rutina" detail={completed ? 'Completada hoy' : 'Pendiente hoy'} />
+        <div className="overview-task-main"><strong title={routine.title}>{routine.title}</strong><RoutineStreaks routine={routine} /></div>
+        <div className="work-card-footer task-actions"><button className="habit-completion" disabled={busy} aria-pressed={completed} title={completed ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(completed ? 'Marcar como pendiente ' : 'Marcar como completada ') + routine.title} onClick={() => onComplete(routine)}><CompletionIcon completed={completed} /></button></div>
       </article>)}</div> : <p className="overview-empty">{completed ? 'Todavía no hay rutinas completadas hoy.' : 'Has completado todas las rutinas de hoy.'}</p>}
     </section>
   })}</div>
@@ -165,6 +170,7 @@ type ProjectListProps = {
   onToggle: (id: string) => void
   onDelete: (id: string) => void
   onNewProject: () => void
+  onNewProjectTask?: (project: ApiProject) => void
   onEditProject: (project: ApiProject) => void
   onDeleteProject: (project: ApiProject) => void
   onChangeProjectStatus?: (project: ApiProject, status: ProjectStatus) => void
@@ -211,7 +217,7 @@ function ProjectTaskGroups({ tasks, history, renderTask }: { tasks: Task[]; hist
   </div>
 }
 
-function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onEditProject, onDeleteProject, onChangeProjectStatus, projectBusy, history = false, statusFilter, showUnassigned = true, onlyUnassigned = false, displayTasks }: ProjectListProps & { history?: boolean; statusFilter?: ProjectStatus; showUnassigned?: boolean; onlyUnassigned?: boolean; displayTasks?: Task[] }) {
+function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onNewProjectTask, onEditProject, onDeleteProject, onChangeProjectStatus, projectBusy, history = false, statusFilter, showUnassigned = true, onlyUnassigned = false, displayTasks }: ProjectListProps & { history?: boolean; statusFilter?: ProjectStatus; showUnassigned?: boolean; onlyUnassigned?: boolean; displayTasks?: Task[] }) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const projectTasks = useMemo(() => tasks.filter(task => task.taskType === 'project').sort((a, b) => a.date.localeCompare(b.date) || compareDayTasks(a, b)), [tasks])
   const projectById = useMemo(() => new Map(projects.map(project => [project.id, project])), [projects])
@@ -259,6 +265,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
             </div>
           </div>
           <div className="project-progress" role="progressbar" aria-label={'Progreso de ' + project.name} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: progress + '%' }} /></div>
+          {onNewProjectTask && project.status === 'active' && <button className="project-add-task" type="button" disabled={projectBusy} aria-label={'Añadir tarea a ' + project.name} onClick={() => onNewProjectTask(project)}>＋ Añadir tarea</button>}
           <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />
         </div>
       </article>
@@ -301,10 +308,10 @@ type RoutineListProps = {
 
 function RoutineList({ routines, onEditRoutine, onToggleRoutine, onDeleteRoutine, busy, activation, activationError, changedId }: RoutineListProps) {
   const sorted = useMemo(() => [...routines].sort((a, b) => a.title.localeCompare(b.title, 'es') || a.id.localeCompare(b.id)), [routines])
-  return <div className="overview-list">{sorted.map(routine => <article key={routine.id} aria-busy={activation?.id === routine.id} className={'overview-task routine-definition ' + (!routine.active ? 'inactive ' : '') + (changedId === routine.id ? 'routine-arrived' : '')} style={{ '--task-color': routine.color } as React.CSSProperties}>
-    <div className="routine-content"><button className="routine-edit-button overview-task-main" disabled={busy} aria-label={'Editar rutina ' + routine.title} onClick={() => onEditRoutine(routine)}><strong>{routine.title}</strong><RoutineStreaks routine={routine} /></button>{activationError?.id === routine.id && <p className="routine-action-error" role="alert">{activationError.message}</p>}</div>
-    <span className="routine-status" role="status">{activation?.id === routine.id ? <><i className="routine-spinner" aria-hidden="true" />{activation.active ? 'Activando…' : 'Pausando…'}</> : routine.active ? 'Activa' : 'Inactiva'}</span>
-    <div className="task-actions"><button data-routine-toggle={routine.id} disabled={busy} aria-pressed={routine.active} title={routine.active ? 'Pausar rutina' : 'Activar rutina'} aria-label={(routine.active ? 'Pausar rutina ' : 'Activar rutina ') + routine.title} onClick={() => onToggleRoutine(routine)}>{routine.active ? 'Ⅱ' : '▷'}</button><button disabled={busy} className="delete-task" title="Eliminar rutina" aria-label={'Eliminar rutina ' + routine.title} onClick={() => onDeleteRoutine(routine)}><DeleteIcon /></button></div>
+  return <div className="overview-list">{sorted.map(routine => <article key={routine.id} aria-busy={activation?.id === routine.id} className={'work-card overview-task routine-definition ' + (!routine.active ? 'inactive ' : '') + (changedId === routine.id ? 'routine-arrived' : '')} style={{ '--task-color': routine.color } as React.CSSProperties}>
+    <CardMetadata label="Rutina" detail={<span className="routine-status" role="status">{activation?.id === routine.id ? <><i className="routine-spinner" aria-hidden="true" />{activation.active ? 'Activando…' : 'Pausando…'}</> : routine.active ? 'Activa' : 'Inactiva'}</span>} />
+    <div className="routine-content"><button className="routine-edit-button overview-task-main" disabled={busy} aria-label={'Editar rutina ' + routine.title} onClick={() => onEditRoutine(routine)}><strong title={routine.title}>{routine.title}</strong><RoutineStreaks routine={routine} /></button>{activationError?.id === routine.id && <p className="routine-action-error" role="alert">{activationError.message}</p>}</div>
+    <div className="work-card-footer task-actions"><button data-routine-toggle={routine.id} disabled={busy} aria-pressed={routine.active} title={routine.active ? 'Pausar rutina' : 'Activar rutina'} aria-label={(routine.active ? 'Pausar rutina ' : 'Activar rutina ') + routine.title} onClick={() => onToggleRoutine(routine)}>{routine.active ? 'Ⅱ' : '▷'}</button><button disabled={busy} className="delete-task" title="Eliminar rutina" aria-label={'Eliminar rutina ' + routine.title} onClick={() => onDeleteRoutine(routine)}><DeleteIcon /></button></div>
   </article>)}</div>
 }
 
@@ -427,6 +434,25 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const [categoryError, setCategoryError] = useState('')
   const [projectError, setProjectError] = useState('')
   const [taskError, setTaskError] = useState('')
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null)
+  const [deleteTaskError, setDeleteTaskError] = useState('')
+  const [projectToDelete, setProjectToDelete] = useState<ApiProject | null>(null)
+  const [deleteProjectError, setDeleteProjectError] = useState('')
+  const deletingTask = useRef(false)
+  const deletingProject = useRef(false)
+  const focusAfterProjectDelete = useRef(false)
+  const focusAfterDelete = useRef(false)
+  useEffect(() => {
+    if (taskToDelete || !focusAfterDelete.current) return
+    focusAfterDelete.current = false
+    const target = document.querySelector<HTMLElement>('.day-agenda-modal') || document.getElementById('main-content')
+    target?.focus({ preventScroll: true })
+  }, [taskToDelete])
+  useEffect(() => {
+    if (projectToDelete || !focusAfterProjectDelete.current) return
+    focusAfterProjectDelete.current = false
+    document.getElementById('main-content')?.focus({ preventScroll: true })
+  }, [projectToDelete])
   const [notice, setNotice] = useState<{ message: string; undo?: () => Promise<void> } | null>(initialNotice ? { message: initialNotice } : null)
   const [categorySelected, setCategorySelected] = useState<string | null>(null)
   const [projectModal, setProjectModal] = useState(false)
@@ -560,6 +586,11 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     setIsModal(true)
   }
   const openNewRoutine = () => { if (habits.ready) openNew(habits.date, '09:00', 'routine') }
+  const openNewProjectTask = (project: ApiProject) => {
+    if (busyAction || !initialDataLoaded || !projects.some(item => item.id === project.id && item.status === 'active')) return
+    openNew(today, '09:00', 'project')
+    setDraft(current => ({ ...current, projectId: project.id, color: project.color }))
+  }
   const edit = (task: Task) => { setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay }); setTaskError(''); setIsModal(true) }
   const editRoutine = (routine: ApiRoutine) => { setSelected(null); setSelectedRoutine(routine.id); setRoutineActive(routine.active); setDraft({ title: routine.title, categoryId: null, projectId: null, taskType: 'routine', date: habits.date, time: '09:00', endTime: '10:00', color: routine.color, done: false, allDay: false }); setTaskError(''); setIsModal(true) }
   const save = async () => {
@@ -617,11 +648,30 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     const task = allTasks.find(item => item.id === id) || overviewTasks.find(item => item.id === id)
     if (task) await setTaskCompletion(task, !task.done)
   }
-  const deleteTask = async (id: string) => {
+  const deleteTask = (id: string) => {
     const task = allTasks.find(item => item.id === id) || overviewTasks.find(item => item.id === id)
-    if (busyAction || !task || !window.confirm('¿Eliminar “' + task.title + '”?')) return
+    if (busyAction || !task) return
+    setDeleteTaskError('')
+    setTaskToDelete(task)
+  }
+  const confirmDeleteTask = async () => {
+    if (busyAction || deletingTask.current || !taskToDelete) return
+    const id = taskToDelete.id
+    deletingTask.current = true
     setBusyAction('delete:' + id)
-    try { await tasksApi.remove(session, id); updateTaskState(prev => prev.filter(item => item.id !== id)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar la tarea') } finally { setBusyAction(null) }
+    setDeleteTaskError('')
+    try {
+      await tasksApi.remove(session, id)
+      updateTaskState(prev => prev.filter(item => item.id !== id))
+      focusAfterDelete.current = true
+      setTaskToDelete(null)
+      setError('')
+    } catch {
+      setDeleteTaskError('No se pudo eliminar la tarea. Inténtalo de nuevo.')
+    } finally {
+      deletingTask.current = false
+      setBusyAction(null)
+    }
   }
   const moveTask = async (id: string, date: string, destination?: 'allDay' | number) => {
     const task = allTasks.find(item => item.id === id) || overviewTasks.find(item => item.id === id)
@@ -687,10 +737,30 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       setError('')
     } catch (e) { setProjectError(e instanceof Error ? e.message : 'No se pudo guardar el proyecto'); focusFormField('.project-modal', 'name') } finally { setBusyAction(null) }
   }
-  const deleteProject = async (project: ApiProject) => {
-    if (busyAction || !window.confirm('¿Eliminar “' + project.name + '”? Sus tareas quedarán sin proyecto.')) return
-    setBusyAction('project:' + project.id)
-    try { await projectsApi.remove(session, project.id); setProjects(prev => prev.filter(item => item.id !== project.id)); updateTaskState(prev => prev.map(task => task.projectId === project.id ? { ...task, projectId: null } : task)); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar el proyecto') } finally { setBusyAction(null) }
+  const deleteProject = (project: ApiProject) => {
+    if (busyAction) return
+    setDeleteProjectError('')
+    setProjectToDelete(project)
+  }
+  const confirmDeleteProject = async () => {
+    if (busyAction || deletingProject.current || !projectToDelete) return
+    const id = projectToDelete.id
+    deletingProject.current = true
+    setBusyAction('project:' + id)
+    setDeleteProjectError('')
+    try {
+      await projectsApi.remove(session, id)
+      setProjects(prev => prev.filter(item => item.id !== id))
+      updateTaskState(prev => prev.map(task => task.projectId === id ? { ...task, projectId: null } : task))
+      focusAfterProjectDelete.current = true
+      setProjectToDelete(null)
+      setError('')
+    } catch {
+      setDeleteProjectError('No se pudo eliminar el proyecto. Inténtalo de nuevo.')
+    } finally {
+      deletingProject.current = false
+      setBusyAction(null)
+    }
   }
   const changeProjectStatus = async (project: ApiProject, status: ProjectStatus) => {
     if (busyAction || project.status === status) return
@@ -789,7 +859,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
           <div className="mobile-calendar-layout" role="group" aria-label="Presentación del calendario"><button aria-pressed={!mobileTimeline} onClick={() => setMobileTimeline(false)}>Agenda</button><button aria-pressed={mobileTimeline} onClick={() => setMobileTimeline(true)}>Horario</button></div>
           <MobileCalendarAgenda days={displayedDays} label={view === 'day' ? 'Agenda diaria' : 'Agenda semanal'} hidden={mobileTimeline} today={today} loading={loading || calendarLoading} visible={date => visible(date).filter(task => visibleTimedTask(task, calendarStart, calendarEnd))} categoryName={categoryName} onNew={date => openNew(date)} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
           <CalendarTimeGrid startMinute={calendarStart} endMinute={calendarEnd} days={displayedDays} today={today} daily={view === 'day'} mobileTimeline={mobileTimeline} loading={loading || calendarLoading} busy={modalBusy} tasks={Array.from(tasksByDate.values()).flat()} onNew={(date, time) => openNew(date, time, 'daily', false)} onMove={rescheduleTask} onNewAllDay={date => openNew(date, '09:00', 'daily', true)}
-            renderAllDayTask={(task, handle) => <AllDayTaskCard task={task} busy={modalBusy} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} draggable={false} moveHandle={handle} />}
+            renderAllDayTask={(task, handle) => <AllDayTaskCard task={task} categoryName={categoryName(task.categoryId)} busy={modalBusy} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} draggable={false} moveHandle={handle} />}
             renderTask={(task, handle) => <TaskCard task={task} busy={modalBusy} categoryName={categoryName(task.categoryId)} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} draggable={false} moveHandle={handle} />} />
         </> : <section className="calendar month-calendar" aria-label="Calendario mensual">
           <div className="month-weekdays">{(firstDay === 'monday' ? ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB', 'DOM'] : ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB']).map(day => <div key={day}>{day}</div>)}</div>
@@ -800,7 +870,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
             const dateLabel = day.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
             return <div key={date} className={'month-day ' + (!inMonth ? 'outside ' : '') + (date === today ? 'today' : '')} onDragOver={e => e.preventDefault()} onDrop={e => { const id = e.dataTransfer.getData('task'); if (id) void moveTask(id, date) }} onDoubleClick={() => openNew(date)}>
               <button className="month-day-number" aria-label={'Ver tareas del ' + dateLabel} onClick={() => setDayAgenda(date)}>{day.getDate()}</button>
-              <div className="month-tasks">{dayTasks.slice(0, 4).map(task => <button key={task.id} draggable={!modalBusy} onDragStart={e => e.dataTransfer.setData('task', task.id)} title={taskTimeLabel(task) + ' — ' + task.title} aria-label={taskTimeLabel(task) + ' — ' + task.title} className={'month-task ' + (task.allDay ? 'month-task-all-day ' : '') + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties} onClick={() => edit(task)}><span>{task.allDay ? 'Todo el día' : task.time}</span> {task.title}</button>)}
+              <div className="month-tasks">{dayTasks.slice(0, 4).map(task => <button key={task.id} draggable={!modalBusy} onDragStart={e => e.dataTransfer.setData('task', task.id)} title={taskTimeLabel(task) + ' — ' + categoryName(task.categoryId) + ' — ' + task.title} aria-label={taskTimeLabel(task) + ' — ' + categoryName(task.categoryId) + ' — ' + task.title} className={'work-card month-task ' + (task.allDay ? 'month-task-all-day ' : '') + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties} onClick={() => edit(task)}><CardMetadata label={taskTimeLabel(task)} detail={categoryName(task.categoryId)} tagged /><span className="month-task-title" title={task.title}>{task.title}</span></button>)}
                 {dayTasks.length > 4 && <button className="month-more" aria-label={'Ver las ' + dayTasks.length + ' tareas del ' + dateLabel} onClick={() => setDayAgenda(date)}>+{dayTasks.length - 4} más</button>}
               </div>
             </div>
@@ -810,7 +880,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         : (overviewLoading || !overviewLoaded || !initialDataLoaded) ? <div className="calendar-loading" role="status">{readError || error ? 'No se pudieron cargar las tareas.' : 'Cargando tareas…'}</div>
         : screen === 'projects' ? <ProjectsView tasks={overviewTasks} projects={projects} onChangeProjectStatus={changeProjectStatus} projectBusy={modalBusy} categoryName={categoryName} onBack={() => setScreen('overview')} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
         : <>
-          <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
+          <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewProjectTask={openNewProjectTask} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
           <ActivityHeatmap key={session.user.id} session={session} revision={activityRevision} />
         </>}
     </main>
@@ -840,7 +910,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
           <label>Hora de finalización<input name="end" type="time" step="60" required value={draft.endTime} onChange={e => { setTaskError(''); setDraft({ ...draft, endTime: e.target.value }) }} /></label>
         </div><p className="form-hint">Al cambiar el inicio se conserva la duración hasta las 23:59. Las tareas terminan el mismo día.</p></>}
         {draft.taskType === 'routine' && <label className="completed-toggle"><input type="checkbox" checked={routineActive} onChange={e => setRoutineActive(e.target.checked)} /><span>Rutina activa</span></label>}
-        {draft.taskType === 'routine' && <ColorPicker colors={colors} value={draft.color} onChange={color => setDraft({ ...draft, color })} />}
+        {draft.taskType === 'routine' && <ColorPicker value={draft.color} onChange={color => setDraft({ ...draft, color })} />}
         <div className="modal-actions"><button type="button" className="cancel" onClick={closeTask}>Cancelar</button><button type="submit" className="save">{busyAction === 'save' ? 'Guardando…' : draft.taskType === 'routine' ? 'Guardar rutina' : 'Guardar tarea'}</button></div>
       </fieldset>
     </FormDialog>}
@@ -848,7 +918,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       <fieldset className="form-fields" disabled={modalBusy}>
         <label>Nombre<input name="name" required value={categoryDraft.name} aria-invalid={Boolean(categoryError)} aria-describedby={categoryError ? 'category-form-error' : undefined} onChange={e => { setCategoryError(''); setCategoryDraft({ ...categoryDraft, name: e.target.value }) }} placeholder="Ej. Física" /></label>
         {categoryError && <p id="category-form-error" className="form-error" role="alert">{categoryError}</p>}
-        <ColorPicker colors={colors} value={categoryDraft.color} onChange={color => setCategoryDraft({ ...categoryDraft, color })} />
+        <ColorPicker value={categoryDraft.color} onChange={color => setCategoryDraft({ ...categoryDraft, color })} />
         <div className="modal-actions"><button type="button" className="cancel" onClick={closeCategory}>Cancelar</button><button type="submit" className="save">{busyAction === 'category' ? 'Guardando…' : 'Guardar categoría'}</button></div>
       </fieldset>
     </FormDialog>}
@@ -856,9 +926,19 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       <fieldset className="form-fields" disabled={modalBusy}>
         <label>Nombre<input name="name" required value={projectDraft.name} aria-invalid={Boolean(projectError)} aria-describedby={projectError ? 'project-form-error' : undefined} onChange={e => { setProjectError(''); setProjectDraft({ ...projectDraft, name: e.target.value }) }} placeholder="Ej. Preparar oposición" /></label>
         {projectError && <p id="project-form-error" className="form-error" role="alert">{projectError}</p>}
-        <ColorPicker colors={colors} value={projectDraft.color} onChange={color => setProjectDraft({ ...projectDraft, color })} />
+        <ColorPicker value={projectDraft.color} onChange={color => setProjectDraft({ ...projectDraft, color })} />
         <div className="modal-actions"><button type="button" className="cancel" onClick={closeProject}>Cancelar</button><button type="submit" className="save">{busyAction === 'project' ? 'Guardando…' : 'Guardar proyecto'}</button></div>
       </fieldset>
+    </FormDialog>}
+    {taskToDelete && <FormDialog className="delete-task-modal" title="Eliminar tarea" busy={modalBusy} initialFocus="[data-cancel-delete]" onClose={() => { if (!modalBusy) setTaskToDelete(null) }} onSubmit={() => void confirmDeleteTask()}>
+      <p className="delete-task-prompt">¿Eliminar «{taskToDelete.title}»?</p>
+      {deleteTaskError && <p className="form-error" role="alert">{deleteTaskError}</p>}
+      <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setTaskToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
+    </FormDialog>}
+    {projectToDelete && <FormDialog className="delete-project-modal" title="Eliminar proyecto" busy={modalBusy} initialFocus="[data-cancel-delete]" onClose={() => { if (!modalBusy) setProjectToDelete(null) }} onSubmit={() => void confirmDeleteProject()}>
+      <p className="delete-task-prompt">¿Eliminar «{projectToDelete.name}»? Sus tareas quedarán sin proyecto.</p>
+      {deleteProjectError && <p className="form-error" role="alert">{deleteProjectError}</p>}
+      <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setProjectToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
     </FormDialog>}
   </div>
 }
