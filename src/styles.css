@@ -541,3 +541,33 @@ button.activity-cell { cursor: pointer; }
 .project-status-control select:focus-visible{outline:2px solid #7056ed;outline-offset:2px}
 .project-status-control select:disabled{opacity:.6;cursor:wait}
 @media(max-width:650px){.project-status-control select{min-height:44px}.project-status-sections{gap:12px}}
+
+/* Project plans share the calendar's purple accent and task colors. */
+.project-plan { margin-top: 18px; }
+.plan-toolbar,.plan-zoom,.plan-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.plan-toolbar { justify-content:space-between; }
+.plan-toolbar button,.plan-actions button,.plan-links button { border:1px solid #d9d5eb; background:#fff; color:#493783; border-radius:7px; padding:7px 10px; cursor:pointer; }
+.plan-help { color:#686477; font-size:13px; line-height:1.5; }
+.plan-viewport { overflow:auto; max-width:100%; height:560px; border:1px solid #ded9ef; border-radius:12px; background-color:#f8f7fc; background-image:radial-gradient(#d9d4e7 1px,transparent 1px); background-size:20px 20px; touch-action:pan-x pan-y; }
+.plan-canvas { position:relative; transform-origin:top left; }
+.plan-arrows { position:absolute; inset:0; overflow:visible; pointer-events:none; color:#8573b5; }
+.plan-arrows>path { fill:none; stroke:currentColor; stroke-width:2; }
+.plan-arrows .plan-preview { stroke-dasharray:5 4; }
+.plan-node { position:absolute; width:260px; height:214px; box-sizing:border-box; padding:12px; border:1px solid #d9d5e7; border-top:4px solid; background:white; border-radius:9px; display:flex; flex-direction:column; gap:5px; }
+.plan-node.blocked { background:#fffaf0; }
+.plan-node.complete { background:#eef8f3; }
+.plan-task-title { background:none; border:0; padding:0; text-align:left; color:#29223e; font-weight:700; font-size:14px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.plan-task-title:focus,.plan-task-title:hover { white-space:normal; overflow:visible; background:white; position:relative; z-index:2; }
+.plan-state,.plan-node small { font-size:12px; color:#62586f; }
+.plan-node label { font-size:11px; margin:0; }
+.plan-node select { width:100%; padding:4px; font-size:12px; }
+.plan-links { display:flex; gap:3px; overflow:auto; min-height:26px; }
+.plan-links button { font-size:11px; white-space:nowrap; padding:3px; }
+.plan-actions { margin-top:auto; gap:4px; }
+.plan-actions button { font-size:11px; padding:5px; }
+.plan-port { position:absolute; top:18px; border:0; background:white; color:#7c5cff; padding:2px; font-size:18px; touch-action:none; cursor:crosshair; }
+.plan-input { left:-11px; }.plan-output { right:-11px; }
+.project-plan button:disabled { opacity:.5; cursor:default; }
+.project-plan :focus-visible { outline:3px solid #7c5cff; outline-offset:2px; }
+.blocked-label { color:#8a5b13; }
+@media(max-width:700px) { .plan-viewport { height:460px; } .plan-toolbar { align-items:flex-start; flex-direction:column; } }

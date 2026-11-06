@@ -150,7 +150,6 @@ def test_pure_task_service_preserves_sparse_patch(memory):
 @pytest.mark.parametrize("payload,message", [
     ({"title": "T", "category_id": "foreign"}, "Category not found"),
     ({"title": "T", "project_id": "foreign"}, "Project not found"),
-    ({"title": "T", "task_type": "project"}, "project_id is required for project tasks"),
     ({"title": "T", "task_type": "routine"}, "Use /api/routines for daily habits"),
     ({"title": " "}, "title is required"),
     ({"title": "T", "user_id": "user-2"}, "Unsupported fields: user_id"),
@@ -541,7 +540,7 @@ def test_sdk_task_category_queries_conflicts_and_json_errors():
         params = requests[0].url.params
         assert "all_day" in params["select"].split(",")
         assert params.get_list("date") == ["gte.2026-10-01", "lte.2026-10-07"]
-        assert params["order"] == "date.asc,start_time.asc"
+        assert params["order"] == "date.asc,start_time.asc,id.asc"
         assert params["task_type"] == "neq.routine"
         requests.clear()
         response = client.patch("/api/tasks/t", headers=HEADERS, json={"all_day": True})

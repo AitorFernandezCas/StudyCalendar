@@ -51,7 +51,7 @@ def test_legacy_reads_keep_task_filters_and_default_all_day(legacy_api, path):
     for request in task_requests:
         assert request.method == "GET"
         assert request.url.params["task_type"] == "neq.routine"
-        assert request.url.params["order"] == "date.asc,start_time.asc"
+        assert request.url.params["order"] == "date.asc,start_time.asc,id.asc"
         if "from=" in path:
             assert request.url.params.get_list("date") == ["gte.2026-10-01", "lte.2026-10-07"]
 

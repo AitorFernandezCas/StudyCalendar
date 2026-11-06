@@ -71,3 +71,8 @@ recuentos de categorías, rutinas, períodos, completaciones y preferencias,
 las cuatro políticas de proyectos, RLS y la función de rachas. El asesor de
 seguridad no añadió avisos. Las transiciones de estado de la UI se prueban con
 proyectos desechables en memoria, sin cambiar el estado de los proyectos reales.
+
+
+## Migración local pendiente: project_plans
+
+`20261106115213_project_plans.sql` fue generada con el CLI y probada en PostgreSQL aislado (PGlite), con rollback. No está aplicada al proyecto compartido ni tiene correspondencia remota. No incluirla en un `db push` del historial completo. Ver DEPLOYMENT.md para copia de seguridad, orden de publicación y límites de verificación.

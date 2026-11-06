@@ -35,6 +35,10 @@ def create_app(settings: Settings | None = None, dependencies: Dependencies | No
             if isinstance(error, HTTPException):
                 return error
             raise error
+        if getattr(error, "code", None) == "P0001":
+            return jsonify({"error": error.message}), 409
+        if getattr(error, "code", None) in {"23514", "23502", "22P02"}:
+            return jsonify({"error": "Revisa la fecha, las horas y los identificadores de la tarea."}), 400
         if isinstance(error, BusinessError):
             statuses = {"validation": 400, "not_found": 404, "conflict": 409}
             return jsonify({"error": str(error), **error.details}), statuses[error.kind]
