@@ -124,20 +124,23 @@ export function useRoutineHabits(session: Session, resetTime?: string) {
   }
 
   const complete = async (id: string, completed: boolean) => {
-    if (!snapshot || snapshotTokenRef.current !== session.access_token || snapshotResetRef.current !== resetRef.current || !routineDayIsCurrent(snapshot)) { await refresh(); return }
+    if (!snapshot || snapshotTokenRef.current !== session.access_token || snapshotResetRef.current !== resetRef.current || !routineDayIsCurrent(snapshot)) { await refresh(); return false }
     requestRef.current?.abort()
     flightRef.current = null
     setLoading(false)
     const version = ++versionRef.current
     try {
       const result = await routinesApi.complete(session, id, snapshot.date, completed)
-      if (!mountedRef.current || tokenRef.current !== session.access_token) return
+      if (!mountedRef.current || tokenRef.current !== session.access_token) return false
       if (version === versionRef.current && routineDayIsCurrent(result)) {
         setSnapshot(current => current ? { ...current, date: result.date, timezone: result.timezone, day_started_at: result.day_started_at, next_day_at: result.next_day_at, routines: current.routines.map(routine => routine.id === id ? result.routine : routine) } : null)
         if (snapshotRef.current) snapshotRef.current = { ...snapshotRef.current, date: result.date, timezone: result.timezone, day_started_at: result.day_started_at, next_day_at: result.next_day_at, routines: snapshotRef.current.routines.map(routine => routine.id === id ? result.routine : routine) }
-      } else await refresh()
+        return true
+      }
+      await refresh()
+      return false
     } catch (e) {
-      if (!mountedRef.current || tokenRef.current !== session.access_token) return
+      if (!mountedRef.current || tokenRef.current !== session.access_token) return false
       if (e instanceof ApiError && (e.status === 409 || e.status === 404)) await refresh()
       throw e
     }

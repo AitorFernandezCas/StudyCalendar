@@ -59,7 +59,8 @@ ejecuciones manuales. Los trabajos Frontend y Backend son independientes; `CI
 completa` exige que ambos terminen correctamente, incluso si alguno se cancela o
 se omite. CI usa URLs y claves ficticias, no credenciales de Supabase.
 
-El frontend instala el lockfile con `npm ci`, verifica la validación de entorno y
+El frontend ejecuta sus comandos desde `frontend/`, instala el lockfile con
+`npm ci`, verifica la validación de entorno y
 compila TypeScript/Vite. El backend ejecuta pytest y arranca la entrada real
 `wsgi:app` mediante Gunicorn en Linux: comprueba salud, `401` sin sesión y CORS.
 El check de salud verifica el proceso HTTP, no la disponibilidad de Supabase.
@@ -86,7 +87,8 @@ entornos de preview que consuman otra instancia del backend.
    `https://frontend-pendiente.invalid` como `FRONTEND_ORIGIN`; no autorizar `*`.
    Guardar la URL asignada realmente por Render; no deducirla del nombre del servicio.
 5. Crear **New > Static Site**, mismo repositorio y `main`, raíz del repositorio,
-   build `npm ci && npm run build:production`, salida `dist`. Introducir las tres
+   build `npm --prefix frontend ci && npm --prefix frontend run build:production`,
+   salida `frontend/dist`. Introducir las tres
    variables `VITE_`, incluyendo la URL real del backend.
 6. Añadir la reescritura `/*` hacia `/index.html` y los headers de `render.yaml`.
    Registrar la URL real del frontend en `FRONTEND_ORIGIN` y redesplegar el backend.
@@ -101,10 +103,42 @@ un Blueprint, usar sus nombres exactos y revisar el resumen antes de sincronizar
 para no crear servicios duplicados. El plan del backend es explícitamente `free`;
 los sitios estáticos no tienen campo `plan`.
 
+### Traslado del frontend a `frontend/`
+
+El código React, `public/`, los scripts de Node, `package.json`, su lockfile,
+las configuraciones Vite/TypeScript y los archivos `.env` del frontend se ubican
+ahora en `frontend/`. El ejemplo local es `frontend/.env.example`; Vite carga
+`frontend/.env`. `.node-version` permanece en la raíz del repositorio.
+
+Antes de publicar esta reorganización, actualizar el servicio estático existente
+`studycalendar` si se administra desde el panel de Render: conservar la raíz del
+servicio en la raíz del repositorio, cambiar **Build Command** a
+`npm --prefix frontend ci && npm --prefix frontend run build:production` y
+**Publish Directory** a `frontend/dist`. Conservar variables, reescritura,
+headers y despliegue tras checks satisfactorios. El backend no requiere cambios.
+Estas rutas ya están reflejadas en `render.yaml`; editar el manifiesto no actualiza
+por sí solo un servicio creado manualmente. No se han cambiado ajustes del
+servicio publicado como parte de esta reorganización local.
+
 No cambiar el Site URL, SMTP, registro global ni otras opciones de Auth del proyecto
 compartido de Supabase. El acceso inicial usa la cuenta existente y no necesita
 confirmaciones nuevas por correo. Si posteriormente se añaden usuarios, tratar
 el registro, los redirects y el correo en un cambio separado.
+
+La interfaz incluye recuperación de contraseña: `resetPasswordForEmail` solicita
+el correo con `redirectTo` igual al origen actual y `/`. El evento
+`PASSWORD_RECOVERY` abre el formulario de nueva contraseña, que llama a
+`updateUser`, valida la confirmación y vuelve a `/tareas`. Los errores del proveedor
+se presentan en español; no se registran contraseñas ni tokens.
+
+Antes de habilitar el envío real en un entorno publicado, comprobar que su URL
+raíz exacta está permitida en Auth > URL Configuration > Redirect URLs. Para el
+frontend publicado es `https://studycalendar.onrender.com/`; en desarrollo es
+`http://localhost:5173/`. No sustituir el Site URL del proyecto compartido ni
+cambiar SMTP, registro u otros redirects existentes. Esta implementación se ha
+comprobado con un proveedor simulado en localhost, sin enviar correos ni cambiar
+la configuración compartida; queda pendiente la comprobación de entrega y retorno
+con un email real en cada entorno autorizado.
 
 ## Migraciones y copias
 
@@ -354,10 +388,17 @@ no se modificaron sus procesos ni los proyectos reales.
 
 ## Planes de proyectos (cambio local pendiente de publicar)
 
-La migración `20261106115213_project_plans.sql` todavía NO se ha aplicado al proyecto compartido. No ejecutar `db push` ni reparar el historial automáticamente. Revisar `supabase/MIGRATION_HISTORY.md`, crear una copia privada reciente y probar primero en una base aislada anterior a esta migración con `backend/test_project_plans.sql` (rollback). La migración añade `prerequisite_ids`, permite fecha/horas nulas únicamente en tareas de proyecto y añade triggers de integridad y borrado completo del proyecto. Conserva los campos y datos existentes, las políticas RLS y los permisos de tareas/proyectos. Las tareas existentes comienzan sin conexiones.
+La migración `20261106122252_project_plans.sql` ya está aplicada al proyecto compartido; ver el registro de aplicación al final de este documento. No ejecutar `db push` ni reparar el historial automáticamente. Revisar `supabase/MIGRATION_HISTORY.md`, crear una copia privada reciente y probar primero en una base aislada anterior a esta migración con `backend/test_project_plans.sql` (rollback). La migración añade `prerequisite_ids`, permite fecha/horas nulas únicamente en tareas de proyecto y añade triggers de integridad y borrado completo del proyecto. Conserva los campos y datos existentes, las políticas RLS y los permisos de tareas/proyectos. Las tareas existentes comienzan sin conexiones.
 
 Orden de publicación: aplicar solo esta migración revisada, verificar restricciones/RLS y conservación de datos, publicar backend y frontend del mismo cambio tras CI. Esta versión consulta la nueva columna; requiere la migración antes de publicar. El backend anterior puede fallar al leer tareas sin fecha: coordinar la ventana y no crear tareas sin fecha hasta publicar ambos servicios. Un rollback de código no revierte el esquema ni recupera proyectos eliminados. El borrado de proyecto elimina también sus tareas completadas y requiere confirmación explícita en la UI. Revisar la copia de seguridad para recuperación.
 
-Comprobaciones locales: `npm run test:calendar`, `npm run build`, `python -m pytest backend -q` y el SQL aislado. El runner opcional `node scripts/test-project-plans-db.mjs` usa PGlite instalado aparte (o `PGLITE_MODULE` como URL del módulo), nunca DATABASE_URL. La prueba SQL valida migración sin cambios en campos existentes, dependencias, ciclos, bloqueo, reapertura, propiedad, borrado, compatibilidad del borrado de cuentas Auth en cascada y rollback. La fixture localhost verifica creación sin fecha, conexiones, desbloqueo, reapertura inversa y exclusión de tareas sin fecha en `/tareas`; la captura está en `docs/screenshots/project-plan.jpg`. Estos checks no equivalen a verificación autenticada en producción ni a pruebas de concurrencia entre conexiones reales; repetir escritores concurrentes contra PostgreSQL aislado antes del despliegue.
+Comprobaciones locales: `npm run test:calendar`, `npm run build`, `python -m pytest backend -q` y el SQL aislado. El runner opcional `node frontend/scripts/test-project-plans-db.mjs` usa PGlite instalado aparte (o `PGLITE_MODULE` como URL del módulo), nunca DATABASE_URL. La prueba SQL valida migración sin cambios en campos existentes, dependencias, ciclos, bloqueo, reapertura, propiedad, borrado, compatibilidad del borrado de cuentas Auth en cascada y rollback. La fixture localhost verifica creación sin fecha, conexiones, desbloqueo, reapertura inversa y exclusión de tareas sin fecha en `/tareas`; la captura está en `docs/screenshots/project-plan.jpg`. Estos checks no equivalen a verificación autenticada en producción ni a pruebas de concurrencia entre conexiones reales; repetir escritores concurrentes contra PostgreSQL aislado antes del despliegue.
 
 Tras publicar: comprobar las cuatro rutas y recarga, proyectos activos/inactivos/completados, tareas sin proyecto, programación y eliminación de fecha, tareas bloqueadas con fecha y contadores. Probar cambios destructivos solo con datos desechables. No se han modificado servicios, credenciales ni datos remotos durante esta implementación local.
+
+
+### Aplicación de project_plans y arranque local — 6 de noviembre de 2026
+
+El usuario confirmó una copia privada reciente y autorizó la migración, aclarando después que quería arrancar localmente y no actualizar Render. Se aplicó solo `project_plans`, registrada como `20261106122252`; se alineó el nombre del archivo local sin modificar el SQL. Las huellas de todos los campos anteriores y los recuentos de las siete tablas coincidieron antes y después (36 tareas, 4 proyectos, 4 categorías, 7 rutinas, 7 períodos, 44 completaciones y 1 preferencia). RLS está activo en las siete tablas, con 27 políticas; `routine_summaries` no cambió y las nuevas funciones no usan SECURITY DEFINER. El asesor de seguridad no añadió hallazgos; permanece el aviso previo de [protección de contraseñas filtradas](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+
+Se integraron los cambios recientes de `main`, incluida la carpeta `frontend/` y sus formularios accesibles, conservando el plan visual y las tareas sin fecha. Pasaron 183 pruebas backend, 29 frontend, el build y la prueba aislada de migración/RLS/borrado/cascada Auth/rollback. El código y la integración están únicamente en la rama local `codex/project-plans`: no se ha hecho push ni se ha disparado CI/CD o Render. La publicación de ambos servicios queda para la petición posterior del usuario; hasta entonces evitar crear tareas sin fecha desde clientes antiguos publicados.

@@ -40,7 +40,7 @@ Desde la raíz:
 ```powershell
 python backend/app.py
 python -m pytest backend -q
-npm run build
+npm --prefix frontend run build
 ```
 
 Se conservan app y create_app en app.py y app en wsgi.py. No se crea ninguna
@@ -183,7 +183,7 @@ Terminal 2, desde la raíz:
 $env:VITE_API_URL='http://127.0.0.1:5001'
 $env:VITE_SUPABASE_URL='http://127.0.0.1:5001'
 $env:VITE_SUPABASE_PUBLISHABLE_KEY='demo-key'
-npm run dev -- --host 127.0.0.1 --port 5180 --strictPort
+npm --prefix frontend run dev -- --host 127.0.0.1 --port 5180 --strictPort
 ```
 
 Abrir http://localhost:5180 e iniciar sesión con demo@example.invalid y cualquier
@@ -211,7 +211,7 @@ o fallar el guardado. Con teclado, enfocar el asa, usar flechas (arriba/abajo pa
 15 minutos, izquierda/derecha para otro día), Enter para guardar y Esc para cancelar.
 Los horarios se mantienen dentro de la fecha, sin cruzar medianoche.
 
-Ejecutar `npm run test:calendar` para verificar ajuste de slots, duración y límites;
+Ejecutar `npm --prefix frontend run test:calendar` para verificar ajuste de slots, duración y límites;
 CI ejecuta estas pruebas con Node 24. Verificar también arrastre táctil, scroll
 automático, tareas solapadas, cancelación, fallo de PATCH y persistencia tras recarga.
 
@@ -220,7 +220,7 @@ con recuperación de horas, varias tarjetas por día, filtros y completado; arra
 en ambos sentidos entre franja y horas (intervalos de 15 minutos, límites de
 23:30–23:45), movimiento en mes y persistencia tras recarga. En mes aparecen
 primero y en tareas/proyectos muestran «Todo el día». Las rutinas no ofrecen esta
-opción. `node --test scripts/task-scheduling.test.mjs` verifica los cálculos de
+opción. `node --test frontend/scripts/task-scheduling.test.mjs` verifica los cálculos de
 horarios con Node 24. La prueba `test_task_all_day.sql` requiere una base de prueba
 aislada anterior a la nueva migración; ver `DEPLOYMENT.md`.
 ## Preferencias personales
@@ -247,12 +247,88 @@ Guardar un intervalo incorrecto debe mostrar error sin perder el borrador. Para
 probar un día efectivo anterior, configurar una hora posterior a la actual y
 verificar creación, completado/desmarcado y sincronización entre tareas y rutinas.
 
-`python -m pytest backend -q` y `npm run test:calendar` cubren límites, DST,
+`python -m pytest backend -q` y `npm --prefix frontend run test:calendar` cubren límites, DST,
 preferencias, adaptador y cálculos del calendario. Ejecutar
 `psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_user_settings.sql`
 en una base de pruebas migrada con conexión administrativa; verifica defaults,
 PATCH parcial, restricciones, RLS y permisos anónimos en una transacción revertida.
 
+
+## Comprobación de la experiencia de uso
+
+Con la fixture desechable, abrir `/` antes de visitar `/tareas`: el contador de
+pendientes debe esperar al listado completo y conservar el mismo total en ambas
+pantallas, incluyendo tareas atrasadas/futuras y excluyendo proyectos inactivos.
+En `/tareas`, comprobar que el resumen da paso directamente a las secciones, sin
+buscador ni filtros. Las tareas personales pendientes se separan en Atrasadas,
+Hoy y Próximas; las completadas se consultan en el calendario y el historial de
+proyectos. Completar y deshacer
+deben actualizar el listado, el contador y la actividad, también para rutinas.
+
+Los bloques de `/tareas` usan filas compactas con completar a la izquierda,
+título y metadatos en el centro y eliminar a la derecha. Verificar edición,
+confirmación de eliminación y creación desde la cabecera o desde un proyecto.
+Con al menos 860 px de ancho de contenido, tareas y proyectos comparten la
+columna principal y las rutinas ocupan la lateral; con menos espacio se apilan.
+Los proyectos con pendientes aparecen primero y los que están al día conservan
+su desplegable. Solo las tareas sin asociación se agrupan en «Sin proyecto».
+Comprobar títulos largos, rachas completas, controles de 44 px en móvil y los
+accesos de gestión de las cabeceras, incluso con el bloque plegado.
+
+En `/proyectos`, los bloques Activos, Inactivos y Completados usan listas con
+separadores, sin tarjetas anidadas. El resumen de cada proyecto muestra pendientes,
+completadas y progreso incluso cerrado, con el selector de estado siempre visible.
+Comprobar los seis cambios de estado entre los tres grupos, conservación del foco
+en el selector tras mover el proyecto, recarga y preservación del historial.
+Abrir el detalle para editar/eliminar el proyecto, consultar pendientes/completadas
+y añadir tareas a proyectos activos. Revisar nombres largos y grupos vacíos a
+320 y 390 px, además de la vista de escritorio.
+
+En `/rutinas`, Activas e Inactivas muestran filas con título, color y ambas
+rachas, botones de texto Pausar/Activar y eliminación secundaria. El contador
+de rutinas se separa de las pendientes de hoy; las activas futuras indican
+«No prevista para hoy» y no aumentan los pendientes. Comprobar pausa/reactivación
+con ratón y teclado, apertura del bloque de destino, recuperación del foco y
+conservación del historial. Revisar edición, errores de activación, nombres
+largos y controles de 44 px a 320 y 390 px. Los bloques conservan su plegado.
+
+En `/configuracion`, preferencias y categorías aparecen en dos columnas a partir
+de 900 px de contenido, y se apilan con menos espacio. Comprobar el aviso de cambios
+sin guardar, Guardar/Descartar, errores de intervalo con foco en la hora de fin y
+el final especial 24:00. Crear o editar categorías debe conservar el borrador de
+preferencias. Revisar nombres largos, etiquetas, controles de 44 px y ausencia de
+desbordamiento a 320 y 390 px; recargar tras guardar para verificar persistencia.
+
+Recargar tras plegar una sección y comprobar que se conserva su estado para ese
+usuario. El historial anual empieza plegado; al abrirlo, Tab entra una sola vez
+en los días y las flechas los recorren sin perder el foco al volver a la ventana.
+El resumen anual cuenta completadas, días con avances y días con todo completado,
+excluyendo fechas futuras. El mapa distingue completo, parcial, sin completar,
+sin tareas y futuro; el detalle muestra fecha, completadas/total y pendientes.
+Comprobar Inicio/Fin, límites del año, años bisiestos, navegación diaria de 44 px,
+cambio de año y retorno a «Este año». Las recargas en segundo plano conservan
+la cuadrícula y la selección del mismo usuario/año, también si falla la lectura;
+un cambio de sesión, año o día invalida los datos anteriores. En móvil solo el
+mapa se desplaza horizontalmente. `test:calendar` incluye sus cálculos y límites.
+En móvil, el resumen precede directamente a las tareas. Comprobar ausencia de
+desbordamiento a 320 px.
+
+Crear un proyecto dentro de una tarea, guardar y verificar que se conserva el
+borrador y se selecciona el proyecto nuevo. Los proyectos no activos solo se
+ofrecen cuando ya están asociados a una tarea existente. Probar nombre vacío y
+duplicado: el error debe aparecer dentro del diálogo y enfocar Nombre. Tab no
+sale del diálogo, Escape lo cierra y devuelve el foco al control de apertura;
+esto también se aplica a los diálogos anidados y a categorías.
+
+En el mes, pulsar «+N más» y comprobar que la agenda contiene todas las tareas
+de esa fecha/categoría, incluidas las que quedan fuera del horario configurado.
+Crear, editar y deshacer desde esa agenda no debe perder el contexto. Mantener
+la verificación de arrastre, todo el día y teclado descrita anteriormente.
+
+`npm --prefix frontend run test:calendar` incluye los casos puros de filtros, agrupación de fechas,
+orden y duración. La recuperación de contraseña debe verificarse con un proveedor
+simulado sin enviar correos desde la fixture; la entrega real y los redirects se
+comprueban aparte siguiendo `DEPLOYMENT.md`.
 
 ## Estados de proyectos
 
@@ -289,4 +365,5 @@ Las tareas de proyecto admiten `date`, `start_time` y `end_time` nulos conjuntam
 
 El núcleo valida dependencias y la migración añade validación atómica en PostgreSQL con bloqueos por proyecto. Completar requiere todas las previas completas; reabrir requiere reabrir antes las dependientes completas. Borrar/mover una tarea conectada exige retirar primero sus conexiones. Borrar un proyecto elimina todas sus tareas, incluidas las completadas. Se mantienen RLS y propiedad. Los conflictos de integridad devuelven 409; la UI muestra el error sin repetir mutaciones.
 
-El plan visual está en `/proyectos`; `/tareas` muestra solo tareas con fecha. Las tareas sin fecha no contribuyen a la actividad diaria. Ejecutar `python -m pytest backend -q`, `npm run test:calendar`, `npm run build` y `backend/test_project_plans.sql` solo en PostgreSQL aislado antes de la migración. Consultar DEPLOYMENT.md antes de publicar: la migración local todavía no está aplicada al Supabase compartido.
+El plan visual está en `/proyectos`; `/tareas` muestra solo tareas con fecha. Las tareas sin fecha no contribuyen a la actividad diaria. Ejecutar `python -m pytest backend -q`, `npm run test:calendar`, `npm run build` y `backend/test_project_plans.sql` solo en PostgreSQL aislado antes de la migración. Consultar DEPLOYMENT.md antes de publicar: la migración ya está aplicada al Supabase compartido; la publicación en Render está aplazada por petición del usuario.
+HTTP, del SDK y de visibilidad están en pytest y `npm --prefix frontend run test:calendar`.

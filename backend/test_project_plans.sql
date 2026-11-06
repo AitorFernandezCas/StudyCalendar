@@ -12,7 +12,7 @@ insert into "Task".tasks(id,user_id,title,task_type,project_id,date,start_time,e
  ('30000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001','A','project','20000000-0000-0000-0000-000000000001','2026-11-06','09:00','10:00','#7c5cff'),
  ('30000000-0000-0000-0000-000000000004','10000000-0000-0000-0000-000000000002','Foreign','project','20000000-0000-0000-0000-000000000002','2026-11-06','09:00','10:00','#7c5cff');
 create temporary table before_plan as select md5(to_jsonb(t)::text) fingerprint from "Task".tasks t;
-\ir ../supabase/migrations/20261106115213_project_plans.sql
+\ir ../supabase/migrations/20261106122252_project_plans.sql
 do $$ begin
   if exists(select fingerprint from before_plan except select md5((to_jsonb(t)-'prerequisite_ids')::text) from "Task".tasks t)
   then raise exception 'Migration changed existing task fields'; end if;

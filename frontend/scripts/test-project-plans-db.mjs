@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite')
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const db = new PGlite()
 try {
   await db.exec(`create role anon; create role authenticated;
