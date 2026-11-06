@@ -310,7 +310,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
               </button>
             </div>
           </div>
-          {history && onNewProjectTask && onLinks ? <ProjectPlan tasks={associated} busy={Boolean(projectBusy)} onNew={() => onNewProjectTask(project)} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} onLinks={onLinks} /> : <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />}
+          {history && onLinks ? <ProjectPlan storageKey={'studycalendar:project-layout:' + project.id} tasks={associated} busy={Boolean(projectBusy)} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} onLinks={onLinks} /> : <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />}
         </div>
       </article>
     })}</div> : <p className="overview-empty">{statusFilter ? 'No hay proyectos ' + projectStatuses.find(status => status.value === statusFilter)?.group.toLowerCase() + '.' : 'No hay proyectos activos.'}</p>)}
@@ -975,9 +975,9 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
             <p className="form-hint" id="project-field-hint">{selectedProject && selectedProject.status !== 'active' ? 'Este proyecto está ' + (selectedProject.status === 'inactive' ? 'inactivo' : 'completado') + '. Sus tareas se consultan en Proyectos y Calendario.' : selectableProjects.length ? 'Puedes crear un proyecto sin perder esta tarea.' : 'Crea tu primer proyecto para asociar esta tarea.'}</p>
             <button type="button" className="inline-create" onClick={() => openProject()}>＋ Crear proyecto</button>
           </div>}
-          {!selectedRoutine && <label>{draft.taskType === 'routine' ? 'Fecha inicial' : 'Fecha'}<input name="date" type="date" required={draft.taskType !== 'project'} value={draft.date} onChange={e => { setTaskError(''); setDraft({ ...draft, date: e.target.value }) }} /></label>}
+          {!selectedRoutine && <label>{draft.taskType === 'routine' ? 'Fecha inicial' : draft.taskType === 'project' ? 'Fecha (opcional)' : 'Fecha'}<input name="date" type="date" required={draft.taskType !== 'project'} value={draft.date} onChange={e => { setTaskError(''); setDraft({ ...draft, date: e.target.value }) }} /></label>}
         </div>
-        {draft.taskType === 'project' && <button type="button" onClick={() => setDraft({ ...draft, date: draft.date ? '' : today })}>{draft.date ? 'Quitar fecha' : 'Asignar fecha'}</button>}{draft.date && draft.taskType !== 'routine' && <label className="completed-toggle"><input type="checkbox" checked={draft.allDay} onChange={e => setDraft({ ...draft, allDay: e.target.checked })} /><span>Todo el día</span></label>}
+        {draft.date && draft.taskType !== 'routine' && <label className="completed-toggle"><input type="checkbox" checked={draft.allDay} onChange={e => setDraft({ ...draft, allDay: e.target.checked })} /><span>Todo el día</span></label>}
         {draft.date && draft.taskType !== 'routine' && !draft.allDay && <><div className="form-grid schedule-fields">
           <label>Hora de inicio<input name="start" type="time" step="60" required value={draft.time} onChange={e => { setTaskError(''); setDraft({ ...draft, ...startWithDuration(e.target.value, draft.time, draft.endTime) }) }} /></label>
           <label>Hora de finalización<input name="end" type="time" step="60" required value={draft.endTime} onChange={e => { setTaskError(''); setDraft({ ...draft, endTime: e.target.value }) }} /></label>

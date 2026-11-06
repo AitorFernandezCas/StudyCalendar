@@ -549,7 +549,7 @@ button.activity-cell { cursor: pointer; }
 /* Project plans share the calendar's purple accent and task colors. */
 .project-plan { margin-top: 18px; }
 .plan-toolbar,.plan-zoom,.plan-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.plan-toolbar { justify-content:space-between; }
+.plan-toolbar { justify-content:flex-end; }
 .plan-toolbar button,.plan-actions button,.plan-links button { border:1px solid #d9d5eb; background:#fff; color:#493783; border-radius:7px; padding:7px 10px; cursor:pointer; }
 .plan-help { color:#686477; font-size:13px; line-height:1.5; }
 .plan-viewport { overflow:auto; max-width:100%; height:560px; border:1px solid #ded9ef; border-radius:12px; background-color:#f8f7fc; background-image:radial-gradient(#d9d4e7 1px,transparent 1px); background-size:20px 20px; touch-action:pan-x pan-y; }
@@ -557,7 +557,7 @@ button.activity-cell { cursor: pointer; }
 .plan-arrows { position:absolute; inset:0; overflow:visible; pointer-events:none; color:#8573b5; }
 .plan-arrows>path { fill:none; stroke:currentColor; stroke-width:2; }
 .plan-arrows .plan-preview { stroke-dasharray:5 4; }
-.plan-node { position:absolute; width:260px; height:214px; box-sizing:border-box; padding:12px; border:1px solid #d9d5e7; border-top:4px solid; background:white; border-radius:9px; display:flex; flex-direction:column; gap:5px; }
+.plan-node { position:absolute; width:220px; min-height:48px; height:48px; box-sizing:border-box; padding:10px 12px; border:1px solid #d9d5e7; border-top:4px solid; background:white; border-radius:9px; display:flex; flex-direction:column; gap:5px; }
 .plan-node.blocked { background:#fffaf0; }
 .plan-node.complete { background:#eef8f3; }
 .plan-task-title { background:none; border:0; padding:0; text-align:left; color:#29223e; font-weight:700; font-size:14px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
@@ -569,7 +569,7 @@ button.activity-cell { cursor: pointer; }
 .plan-links button { font-size:11px; white-space:nowrap; padding:3px; }
 .plan-actions { margin-top:auto; gap:4px; }
 .plan-actions button { font-size:11px; padding:5px; }
-.plan-port { position:absolute; top:18px; border:0; background:white; color:#7c5cff; padding:2px; font-size:18px; touch-action:none; cursor:crosshair; }
+.plan-port { position:absolute; top:10px; border:0; background:white; color:#7c5cff; padding:2px; font-size:18px; touch-action:none; cursor:crosshair; }
 .plan-input { left:-11px; }.plan-output { right:-11px; }
 .project-plan button:disabled { opacity:.5; cursor:default; }
 .project-plan :focus-visible { outline:3px solid #7c5cff; outline-offset:2px; }
@@ -1218,3 +1218,39 @@ button.work-card:focus-visible { outline: 2px solid #5135b8; outline-offset: 2px
   .activity-day-navigation { justify-content: flex-end; }
   .activity-history .activity-hint { display: block; margin: 10px 0 0; color: #737b8a; font-size: 11px; line-height: 1.5; }
 }
+
+/* Moving a card changes only its diagram position. */
+.plan-node { cursor:grab; touch-action:none; }
+.plan-node.moving { cursor:grabbing; z-index:3; box-shadow:0 8px 22px #49378326; user-select:none; }
+.plan-node .plan-move-handle { position:absolute; top:5px; right:7px; border:0; background:transparent; color:#62586f; font-size:21px; line-height:1; padding:4px; cursor:grab; touch-action:none; }
+.plan-node .plan-move-handle:active { cursor:grabbing; }
+.plan-node .plan-task-title { margin-right:25px; }
+
+/* Compact diagram nodes expand over their neighbours without shifting them. */
+.plan-node { height:auto; gap:0; z-index:1; transition:box-shadow 280ms cubic-bezier(.22,1,.36,1),z-index 0s linear 280ms; }
+.plan-node-details { display:grid; grid-template-rows:0fr; opacity:0; visibility:hidden; pointer-events:none; transform:translateY(-6px); transition:grid-template-rows 280ms cubic-bezier(.22,1,.36,1),opacity 180ms ease,transform 280ms cubic-bezier(.22,1,.36,1),visibility 0s linear 280ms; }
+.plan-node-details-clip { min-height:0; overflow:hidden; }
+.plan-node-details-content { display:flex; flex-direction:column; gap:7px; padding-top:10px; }
+.plan-node .plan-task-title { width:calc(100% - 24px); margin-right:0; line-height:23px; max-height:none; white-space:normal; overflow:visible; overflow-wrap:anywhere; flex-shrink:0; }
+.plan-node .plan-task-title:is(:hover,:focus) { white-space:normal; overflow:visible; background:transparent; }
+.plan-node .plan-move-handle,.plan-node .plan-port { opacity:0; pointer-events:none; transition:opacity 180ms ease; }
+.plan-node:is(:hover,:focus-within):not(.moving) { height:auto; min-height:48px; z-index:4; box-shadow:0 8px 22px #49378326; transition-delay:0s; }
+.plan-node:is(:hover,:focus-within):not(.moving) .plan-node-details { grid-template-rows:1fr; opacity:1; visibility:visible; pointer-events:auto; transform:translateY(0); transition-delay:0s,40ms,0s,0s; }
+.plan-node:is(:hover,:focus-within) .plan-move-handle,.plan-node:is(:hover,:focus-within) .plan-port,.plan-canvas.connecting .plan-port { opacity:1; pointer-events:auto; }
+.plan-node .plan-move-handle { top:5px; }
+.plan-node.moving { height:auto; transition:none; }
+.plan-node.moving .plan-node-details,.plan-node.moving .plan-task-title { transition:none; }
+.plan-node:focus-visible { outline:3px solid #7c5cff; outline-offset:2px; }
+@media(prefers-reduced-motion:reduce) {
+  .plan-node,.plan-node-details,.plan-node .plan-task-title,.plan-node .plan-move-handle,.plan-node .plan-port { transition:none; }
+  .plan-node-details { transform:none; }
+}
+
+/* A focused branch is a temporary view of the complete project. */
+.plan-focus-summary { display:flex; align-items:center; gap:12px; flex:1; min-width:220px; max-width:100%; }
+.plan-focus-summary > div { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.plan-focus-summary strong { font-size:14px; color:#493783; max-width:350px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.plan-focus-summary span { font-size:12px; color:#686477; }
+.plan-focus-summary button { flex-shrink:0; }
+.plan-node.branch-root { outline:2px solid #7c5cff; outline-offset:4px; }
+@media(max-width:700px) { .plan-focus-summary { width:100%; min-width:0; align-items:flex-start; flex-wrap:wrap; } }

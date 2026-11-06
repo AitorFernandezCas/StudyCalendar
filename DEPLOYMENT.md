@@ -405,3 +405,10 @@ Se integraron los cambios recientes de `main`, incluida la carpeta `frontend/` y
 
 
 Arranque local verificado: frontend `http://localhost:5174`, API `http://127.0.0.1:5002`. Los puertos 5173 y 5000 ya estaban ocupados por otros procesos; se conservaron. `frontend/.env` privado apunta a la API local 5002 y está ignorado por Git. La API devolvió salud 200, tareas sin sesión 401 y CORS para `http://localhost:5174`. El navegador abrió `/proyectos` con la sesión existente y mostró el plan visual con tareas reales sin modificar sus datos. Ambos procesos locales quedan en ejecución; no se han hecho push ni cambios en Render.
+
+
+### Publicación mediante PR — 6 de noviembre de 2026
+
+El usuario autorizó crear y fusionar la PR de planes de proyectos tras CI, utilizando el pipeline existente de `main`. Esta autorización sustituye el aplazamiento anterior de la publicación. La migración `20261106122252_project_plans` ya está aplicada: no volver a ejecutarla desde CI ni Render. La PR incluye tareas sin fecha, dependencias, borrado completo de proyectos, movimiento libre del diagrama, foco temporal por rama, nombres completos sin hover y expansión suave de controles. Las capturas de la fixture están en `docs/screenshots/project-plan.jpg` y `docs/screenshots/branch-focus.jpg`.
+
+Verificación local del estado final: 35 pruebas frontend, 183 backend y build correctos; las comprobaciones SQL aisladas de migración/RLS/borrado/cascada Auth/rollback también pasaron. El merge debe esperar a Frontend, Backend y CI completa. Render conserva su integración y despliegue automático tras checks; esta PR no cambia servicios, planes, variables ni autenticación global.

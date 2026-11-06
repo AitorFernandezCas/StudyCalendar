@@ -84,3 +84,38 @@ The migration is `20261106122252_project_plans.sql`. It preserves existing field
 Verification covers frontend layout and visibility helpers, the production build, backend HTTP and core regressions, and isolated PostgreSQL migration/invariant/RLS/deletion/Auth-cascade/rollback checks. The local UI fixture verifies undated creation, connecting tasks, completion unlocking, reverse reopening, and overview exclusion. The fixture does not establish production availability or real multi-connection concurrency performance; repeat concurrent writer checks against isolated PostgreSQL before rollout. The SQL test and runner are `backend/test_project_plans.sql` and `frontend/scripts/test-project-plans-db.mjs`.
 
 Rollout requires the migration before this application version, a private backup, and coordinated backend/frontend deployment. Follow DEPLOYMENT.md; schema deployment is not automatic.
+
+
+## Manual diagram arrangement — 2026-11-06
+
+The user subsequently requested moving tasks freely without creating dependency links. Cards can be dragged by their non-interactive surface or movement control; that control also supports arrow keys (20 units) and Shift+arrow keys (5 units). Movement accounts for zoom and scrolling, keeps cards inside the canvas, and redraws existing arrows. Escape or pointer cancellation restores a cancelled drag.
+
+Positions persist per project in this browser's local storage, without updating task dates, completion, or prerequisites. They are not synchronized across devices. Automatic layout remains the initial layout and can be restored with "Organizar automáticamente"; "Restablecer vista" resets only zoom and scroll.
+
+
+## Compact diagram cards — 2026-11-06
+
+The user requested name-only cards that expand on hover. The collapsed node is 220 × 48 pixels; automatic rows are closer together. Hover and keyboard focus reveal the full title, status, schedule, prerequisites, movement/connection controls, and actions. Expanded cards overlay neighbouring nodes without moving their positions or connection anchors. Saved manual positions remain valid.
+
+
+Project task scheduling is controlled solely through the optional date selector. Choosing a date schedules the task; clearing the selector leaves it undated. The separate "Asignar fecha" / "Quitar fecha" button was removed at the user's request. Daily tasks and routine initial dates remain required.
+
+The diagram toolbar no longer duplicates task creation with a separate "Nueva tarea sin fecha" action. Use the project's existing "Añadir tarea" action and its optional date selector.
+
+
+## Focus on a branch — 2026-11-06
+
+Each expanded card offers "Ver rama". The view contains the selected task, its transitive prerequisites, and its transitive dependents; the two traversals stay separate, excluding sideways branches and additional inputs of downstream tasks. For A -> B -> D and X -> D, focusing B shows A/B/D but hides X. D still displays X in its prerequisite details, marked as outside the branch, and all task rules and editing controls use the complete project collection.
+
+The toolbar identifies "Rama de «task name»", visible/total task counts, and "Ver proyecto completo". The selected root has a distinct outline. Choosing another visible task's branch recomputes the result against the complete project. Editing via the task name continues to work.
+
+Focused branches use their own compact automatic layout and in-memory manual positions. Entry and "Restablecer vista" fit the branch using 40–100% zoom; "Organizar automáticamente" resets only the temporary branch arrangement. Leaving restores full-project positions, zoom and scroll. Focus and temporary moves are never written to saved project positions or to the API. Focus survives collapsing/reopening the project but resets on page reload. Dependency edits recalculate membership, and deleting or moving the root out of the project automatically restores the full view. Changing views cancels active movement and connection gestures.
+
+Verification includes pure traversal tests for branching, shared inputs, switching roots, graph edits, completed and isolated tasks, missing references, malformed cycles, long chains, and hidden-prerequisite blocking. Manual disposable-fixture checks cover layout/camera restoration, temporary dragging, focused arrangement, keyboard entry/exit, root deletion and focus reset after reload. The task-name editor callback remains unchanged. No backend, API or migration change is needed; this feature is local only and is not published to Render.
+
+Branch focus verification passed: 34 frontend helper tests, 183 backend regressions, and the production build. A six-task disposable localhost fixture verified strict branch membership, hidden-prerequisite blocking, switching roots, temporary pointer/keyboard movement, focused auto-arrangement, full-layout/zoom restoration, collapse/reopen persistence, dependency edits, root deletion, and reload reset. The fixture services were stopped afterward; the real local app remains available. See `docs/screenshots/branch-focus.jpg` for the fixture screenshot.
+
+
+## Full task names without hover — 2026-11-06
+
+Collapsed cards keep their fixed width but wrap the entire task name and grow vertically to fit it, including long unbroken words. Details and actions still appear only on hover or keyboard focus, using the existing smooth transition. Natural title heights are measured without zoom scaling; automatic row spacing, connection anchors, canvas bounds and focused-branch fitting use each card's collapsed height. Manual positions remain intact, and dragging no longer forces long-name cards back to one line.
