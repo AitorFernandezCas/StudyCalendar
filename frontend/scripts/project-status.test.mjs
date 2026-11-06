@@ -15,7 +15,7 @@ const tasks = [
   { id: 'unassigned', taskType: 'project', projectId: null, done: false },
   { id: 'deleted-project', taskType: 'project', projectId: 'missing', done: false },
   { id: 'completed-task', taskType: 'project', projectId: 'a', done: true },
-]
+].map(task => ({ date: '2026-11-06', ...task }))
 
 test('overview excludes inactive and completed projects without relabelling their tasks as unassigned', () => {
   assert.deepEqual(visibleOverviewTasks(tasks, projects).map(task => task.id), ['daily', 'active', 'unassigned', 'deleted-project', 'completed-task'])

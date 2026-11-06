@@ -25,6 +25,7 @@ export function groupDailyTasks(tasks: Task[], today: string) {
 }
 
 export function relativeTaskDate(date: string, today: string) {
+  if (!date) return 'Sin fecha'
   const difference = Math.round((Date.parse(date + 'T12:00:00Z') - Date.parse(today + 'T12:00:00Z')) / 86400000)
   if (difference === 0) return 'Hoy'
   if (difference === 1) return 'Mañana'

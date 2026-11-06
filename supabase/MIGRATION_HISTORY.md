@@ -71,3 +71,12 @@ recuentos de categorías, rutinas, períodos, completaciones y preferencias,
 las cuatro políticas de proyectos, RLS y la función de rachas. El asesor de
 seguridad no añadió avisos. Las transiciones de estado de la UI se prueban con
 proyectos desechables en memoria, sin cambiar el estado de los proyectos reales.
+
+
+## Planes de proyectos: aplicada el 6 de noviembre de 2026
+
+`20261106122252_project_plans.sql` corresponde a la versión remota `20261106122252` (`project_plans`). El CLI generó inicialmente `20261106115213_project_plans.sql`; se renombró para coincidir con el registro remoto, conservando su SQL. Se aplicó únicamente esta migración tras confirmación del usuario de una copia privada reciente y tras pasar las pruebas SQL en PostgreSQL aislado con rollback. No se reparó ni reejecutó ninguna versión histórica.
+
+Se conservaron las huellas de los campos anteriores de 36 tareas, 4 proyectos, 4 categorías, 7 rutinas, 7 períodos, 44 completaciones y 1 preferencia. Las 36 tareas empiezan con `prerequisite_ids=[]`. RLS sigue activo en las siete tablas, con 27 políticas; `routine_summaries` conserva su huella. Los tres triggers nuevos usan SECURITY INVOKER y `search_path=pg_catalog`. El asesor de seguridad conserva solo su aviso previo sobre protección de contraseñas filtradas, sin hallazgos nuevos.
+
+El historial remoto contiene además migraciones de FinanceTracker posteriores a `project_status`; pertenecen al otro proyecto compartido y no se modificaron. El usuario pidió iniciar StudyCalendar localmente y aplazar la publicación en Render.

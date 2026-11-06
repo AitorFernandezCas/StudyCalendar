@@ -40,9 +40,9 @@ class Repository:
         rows = list(self.rows.values())
         if self.name == "tasks":
             rows = [r for r in rows if r["task_type"] != "routine" and
-                    (start is None or r["date"] >= start.isoformat()) and
-                    (end is None or r["date"] <= end.isoformat())]
-            rows.sort(key=lambda r: (r["date"], r["start_time"]))
+                    (start is None or (r.get("date") and r["date"] >= start.isoformat())) and
+                    (end is None or (r.get("date") and r["date"] <= end.isoformat()))]
+            rows.sort(key=lambda r: (r.get("date") or "", r.get("start_time") or ""))
         else:
             rows.sort(key=lambda r: r["name"])
         return [self.model.from_record(dict(r)) for r in rows]
@@ -77,7 +77,11 @@ class Repository:
     def delete(self, identifier):
         if self.rows.pop(identifier, None) is None:
             return False
-        association = {"categories": "category_id", "projects": "project_id"}.get(self.name)
+        if self.name == "projects":
+            for key in list(self.store.rows["tasks"]):
+                if self.store.rows["tasks"][key].get("project_id") == identifier:
+                    del self.store.rows["tasks"][key]
+        association = {"categories": "category_id"}.get(self.name)
         if association:
             for task in self.store.rows["tasks"].values():
                 if task.get(association) == identifier:
@@ -152,7 +156,7 @@ class Activity:
         from studycalendar.queries.domain import ActivityRecords, DatedTask, RoutinePeriod, RoutineCompletion
         return ActivityRecords(
             [DatedTask(row["date"], row["completed"]) for row in self.store.rows["tasks"].values()
-             if row["task_type"] != "routine" and start.isoformat() <= row["date"] <= end.isoformat()],
+             if row["task_type"] != "routine" and row.get("date") and start.isoformat() <= row["date"] <= end.isoformat()],
             [RoutinePeriod(row["routine_id"], row["starts_on"], row["ends_on"])
              for row in self.store.rows["periods"].values()],
             [RoutineCompletion(identifier, day) for (identifier, day), completed in self.store.rows["completions"].items()

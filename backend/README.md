@@ -356,4 +356,14 @@ psql "$env:DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/test_project_status.sql
 El script revierte migración y fixtures, verifica defaults, restricciones,
 transiciones, PATCH parcial, nombres únicos, preservación de tareas, RLS y
 acceso anónimo. No ejecutarlo contra la base compartida migrada. Las pruebas
+HTTP, del SDK y de visibilidad están en pytest y `npm run test:calendar`.
+
+
+## Planes de proyectos
+
+Las tareas de proyecto admiten `date`, `start_time` y `end_time` nulos conjuntamente; omitir fecha al crearlas produce una tarea sin programar. PATCH conserva campos omitidos; `date: null` retira la programación. Asignar fecha a una tarea sin programar usa 09:00–10:00 salvo horas explícitas. `prerequisite_ids` es una lista de tareas del mismo proyecto; PATCH reemplaza esa lista y `[]` retira todas sus conexiones entrantes. Las conexiones salientes se retiran en las tareas dependientes.
+
+El núcleo valida dependencias y la migración añade validación atómica en PostgreSQL con bloqueos por proyecto. Completar requiere todas las previas completas; reabrir requiere reabrir antes las dependientes completas. Borrar/mover una tarea conectada exige retirar primero sus conexiones. Borrar un proyecto elimina todas sus tareas, incluidas las completadas. Se mantienen RLS y propiedad. Los conflictos de integridad devuelven 409; la UI muestra el error sin repetir mutaciones.
+
+El plan visual está en `/proyectos`; `/tareas` muestra solo tareas con fecha. Las tareas sin fecha no contribuyen a la actividad diaria. Ejecutar `python -m pytest backend -q`, `npm run test:calendar`, `npm run build` y `backend/test_project_plans.sql` solo en PostgreSQL aislado antes de la migración. Consultar DEPLOYMENT.md antes de publicar: la migración ya está aplicada al Supabase compartido; la publicación en Render está aplazada por petición del usuario.
 HTTP, del SDK y de visibilidad están en pytest y `npm --prefix frontend run test:calendar`.

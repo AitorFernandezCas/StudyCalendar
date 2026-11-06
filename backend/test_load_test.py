@@ -63,10 +63,8 @@ def test_disposable_ui_fixture_uses_real_use_cases():
     assert client.patch("/api/tasks/" + task["id"], headers=headers, json={"all_day": True}).json["all_day"] is True
     client.delete("/api/projects/" + project["id"], headers=headers)
     client.delete("/api/categories/" + category["id"], headers=headers)
-    result = client.get("/api/tasks", headers=headers).json[0]
-    assert result["project_id"] is None and result["category_id"] is None
-    assert result["all_day"] is True
-    assert client.delete("/api/tasks/" + task["id"], headers=headers).status_code == 200
+    assert client.get("/api/tasks", headers=headers).json == []
+    assert client.delete("/api/tasks/" + task["id"], headers=headers).status_code == 404
 
 
 @pytest.mark.parametrize("flag,value", [("--duration", "nan"), ("--timeout", "inf"), ("--interval", "-1")])

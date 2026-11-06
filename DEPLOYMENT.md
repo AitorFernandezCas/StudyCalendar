@@ -384,3 +384,31 @@ reactivación con las tareas pendientes intactas. La captura de los tres estados
 con datos ficticios está en `docs/screenshots/project-states.jpg`. Se utilizó
 un puerto API local libre (59437), porque otras aplicaciones usaban 5001/5002;
 no se modificaron sus procesos ni los proyectos reales.
+
+
+## Planes de proyectos (cambio local pendiente de publicar)
+
+La migración `20261106122252_project_plans.sql` ya está aplicada al proyecto compartido; ver el registro de aplicación al final de este documento. No ejecutar `db push` ni reparar el historial automáticamente. Revisar `supabase/MIGRATION_HISTORY.md`, crear una copia privada reciente y probar primero en una base aislada anterior a esta migración con `backend/test_project_plans.sql` (rollback). La migración añade `prerequisite_ids`, permite fecha/horas nulas únicamente en tareas de proyecto y añade triggers de integridad y borrado completo del proyecto. Conserva los campos y datos existentes, las políticas RLS y los permisos de tareas/proyectos. Las tareas existentes comienzan sin conexiones.
+
+Orden de publicación: aplicar solo esta migración revisada, verificar restricciones/RLS y conservación de datos, publicar backend y frontend del mismo cambio tras CI. Esta versión consulta la nueva columna; requiere la migración antes de publicar. El backend anterior puede fallar al leer tareas sin fecha: coordinar la ventana y no crear tareas sin fecha hasta publicar ambos servicios. Un rollback de código no revierte el esquema ni recupera proyectos eliminados. El borrado de proyecto elimina también sus tareas completadas y requiere confirmación explícita en la UI. Revisar la copia de seguridad para recuperación.
+
+Comprobaciones locales: `npm run test:calendar`, `npm run build`, `python -m pytest backend -q` y el SQL aislado. El runner opcional `node frontend/scripts/test-project-plans-db.mjs` usa PGlite instalado aparte (o `PGLITE_MODULE` como URL del módulo), nunca DATABASE_URL. La prueba SQL valida migración sin cambios en campos existentes, dependencias, ciclos, bloqueo, reapertura, propiedad, borrado, compatibilidad del borrado de cuentas Auth en cascada y rollback. La fixture localhost verifica creación sin fecha, conexiones, desbloqueo, reapertura inversa y exclusión de tareas sin fecha en `/tareas`; la captura está en `docs/screenshots/project-plan.jpg`. Estos checks no equivalen a verificación autenticada en producción ni a pruebas de concurrencia entre conexiones reales; repetir escritores concurrentes contra PostgreSQL aislado antes del despliegue.
+
+Tras publicar: comprobar las cuatro rutas y recarga, proyectos activos/inactivos/completados, tareas sin proyecto, programación y eliminación de fecha, tareas bloqueadas con fecha y contadores. Probar cambios destructivos solo con datos desechables. No se han modificado servicios, credenciales ni datos remotos durante esta implementación local.
+
+
+### Aplicación de project_plans y arranque local — 6 de noviembre de 2026
+
+El usuario confirmó una copia privada reciente y autorizó la migración, aclarando después que quería arrancar localmente y no actualizar Render. Se aplicó solo `project_plans`, registrada como `20261106122252`; se alineó el nombre del archivo local sin modificar el SQL. Las huellas de todos los campos anteriores y los recuentos de las siete tablas coincidieron antes y después (36 tareas, 4 proyectos, 4 categorías, 7 rutinas, 7 períodos, 44 completaciones y 1 preferencia). RLS está activo en las siete tablas, con 27 políticas; `routine_summaries` no cambió y las nuevas funciones no usan SECURITY DEFINER. El asesor de seguridad no añadió hallazgos; permanece el aviso previo de [protección de contraseñas filtradas](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+
+Se integraron los cambios recientes de `main`, incluida la carpeta `frontend/` y sus formularios accesibles, conservando el plan visual y las tareas sin fecha. Pasaron 183 pruebas backend, 29 frontend, el build y la prueba aislada de migración/RLS/borrado/cascada Auth/rollback. El código y la integración están únicamente en la rama local `codex/project-plans`: no se ha hecho push ni se ha disparado CI/CD o Render. La publicación de ambos servicios queda para la petición posterior del usuario; hasta entonces evitar crear tareas sin fecha desde clientes antiguos publicados.
+
+
+Arranque local verificado: frontend `http://localhost:5174`, API `http://127.0.0.1:5002`. Los puertos 5173 y 5000 ya estaban ocupados por otros procesos; se conservaron. `frontend/.env` privado apunta a la API local 5002 y está ignorado por Git. La API devolvió salud 200, tareas sin sesión 401 y CORS para `http://localhost:5174`. El navegador abrió `/proyectos` con la sesión existente y mostró el plan visual con tareas reales sin modificar sus datos. Ambos procesos locales quedan en ejecución; no se han hecho push ni cambios en Render.
+
+
+### Publicación mediante PR — 6 de noviembre de 2026
+
+El usuario autorizó crear y fusionar la PR de planes de proyectos tras CI, utilizando el pipeline existente de `main`. Esta autorización sustituye el aplazamiento anterior de la publicación. La migración `20261106122252_project_plans` ya está aplicada: no volver a ejecutarla desde CI ni Render. La PR incluye tareas sin fecha, dependencias, borrado completo de proyectos, movimiento libre del diagrama, foco temporal por rama, nombres completos sin hover y expansión suave de controles. Las capturas de la fixture están en `docs/screenshots/project-plan.jpg` y `docs/screenshots/branch-focus.jpg`.
+
+Verificación local del estado final: 35 pruebas frontend, 183 backend y build correctos; las comprobaciones SQL aisladas de migración/RLS/borrado/cascada Auth/rollback también pasaron. El merge debe esperar a Frontend, Backend y CI completa. Render conserva su integración y despliegue automático tras checks; esta PR no cambia servicios, planes, variables ni autenticación global.

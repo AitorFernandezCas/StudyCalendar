@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from datetime import time
+from dataclasses import dataclass, field
+from datetime import date, time
 from types import MappingProxyType
 from typing import Any
 from ..shared.domain import Model, Command, BusinessError
@@ -12,16 +12,28 @@ class Task(Model):
     category_id: str | None = None
     project_id: str | None = None
     task_type: str = "daily"
-    date: str = ""
-    start_time: str = ""
-    end_time: str = ""
+    date: str | None = ""
+    start_time: str | None = ""
+    end_time: str | None = ""
     color: str = ""
     completed: bool = False
     all_day: bool = False
+    prerequisite_ids: list[str] = field(default_factory=list)
 
 
 def task_command(raw: Any, creating: bool = False) -> Command:
-    body = Command.parse(raw, {"title", "category_id", "project_id", "task_type", "date", "start_time", "end_time", "color", "completed", "all_day"}).payload()
+    body = Command.parse(raw, {"title", "category_id", "project_id", "task_type", "date", "start_time", "end_time", "color", "completed", "all_day", "prerequisite_ids"}).payload()
+    if "prerequisite_ids" in body:
+        ids = body["prerequisite_ids"]
+        if not isinstance(ids, list) or any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids):
+            raise BusinessError("Las tareas previas deben ser una lista de identificadores únicos")
+    if "completed" in body and not isinstance(body["completed"], bool):
+        raise BusinessError("completed must be a boolean")
+    if body.get("date") is not None and "date" in body:
+        try:
+            date.fromisoformat(body["date"])
+        except (TypeError, ValueError):
+            raise BusinessError("La fecha debe tener formato AAAA-MM-DD")
     if "all_day" in body and not isinstance(body["all_day"], bool):
         raise BusinessError("all_day must be a boolean")
     # All-day tasks retain a valid internal interval. Sparse conversions without

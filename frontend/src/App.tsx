@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { bootstrapApi, calendarApi, categoriesApi, projectsApi, routinesApi, tasksApi, type ApiCategory, type ApiProject, type ApiRoutine, type ApiTask, type ProjectStatus } from './lib/api'
+import { ProjectPlan } from './components/ProjectPlan'
 import { CalendarTimeGrid } from './components/CalendarTimeGrid'
 import { CardMetadata } from './components/CardMetadata'
 import type { Task, TaskType } from './lib/taskTypes'
@@ -32,11 +33,11 @@ const colors = ['#7c5cff', '#ee7b6f', '#f2b84b', '#3fba91', '#4f8ff7']
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (d: Date) => String(d.getFullYear()) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute }
-const fromApi = (task: ApiTask): Task => ({ id: task.id, title: task.title, categoryId: task.category_id, projectId: task.project_id, taskType: task.task_type, date: task.date, time: task.start_time.slice(0, 5), endTime: task.end_time.slice(0, 5), color: task.color, done: task.completed, allDay: task.all_day ?? false })
-const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, project_id: task.projectId, task_type: task.taskType, date: task.date, ...taskSchedule(task), color: task.color, completed: task.done })
+const fromApi = (task: ApiTask): Task => ({ id: task.id, title: task.title, categoryId: task.category_id, projectId: task.project_id, taskType: task.task_type, date: task.date || '', time: task.start_time?.slice(0, 5) || '09:00', endTime: task.end_time?.slice(0, 5) || '10:00', prerequisiteIds: task.prerequisite_ids || [], color: task.color, done: task.completed, allDay: task.all_day ?? false })
+const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, project_id: task.projectId, task_type: task.taskType, date: task.date || null, ...(task.date ? taskSchedule(task) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: task.prerequisiteIds || [], color: task.color, completed: task.done })
 
 const compareDayTasks = (a: Task, b: Task) => Number(b.allDay) - Number(a.allDay) || (a.allDay ? a.title.localeCompare(b.title, 'es') : a.time.localeCompare(b.time)) || a.id.localeCompare(b.id)
-const taskTimeLabel = (task: Task) => task.allDay ? 'Todo el día' : task.time + ' — ' + task.endTime
+const taskTimeLabel = (task: Task) => !task.date ? 'Sin fecha' : task.allDay ? 'Todo el día' : task.time + ' — ' + task.endTime
 const focusFormField = (form: string, name: string) => requestAnimationFrame(() => document.querySelector<HTMLInputElement | HTMLSelectElement>(form + ' [name="' + name + '"]')?.focus())
 
 function NavigationIcon({ type }: { type: 'tasks' | 'calendar' | 'settings' | 'projects' | 'routines' }) {
@@ -133,7 +134,7 @@ function ActionNotice({ notice, busy, onDismiss, inline = false }: { notice: { m
 function OverviewTask({ task, categoryName, projectName, onEdit, onToggle, onDelete, busy = false }: { task: Task; categoryName: string; projectName?: string; onEdit: (task: Task) => void; onToggle: (id: string) => void; onDelete: (id: string) => void; busy?: boolean }) {
   return <article className={'work-card overview-task ' + (task.done ? 'done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
     <CardMetadata label={taskTimeLabel(task)} detail={categoryName} tagged />
-    <button disabled={busy} className="overview-task-main overview-edit-button" aria-label={'Editar tarea ' + task.title} onClick={() => onEdit(task)}><strong title={task.title}>{task.title}</strong><small>{projectName && projectName + ' · '}<time dateTime={task.date} title={new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' })}>{relativeTaskDate(task.date, iso(new Date()))}</time></small></button><div className="work-card-footer task-actions"><button disabled={busy} className="task-completion-button" aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}>
+    <button disabled={busy} className="overview-task-main overview-edit-button" aria-label={'Editar tarea ' + task.title} onClick={() => onEdit(task)}><strong title={task.title}>{task.title}</strong><small>{projectName && projectName + ' · '}<time dateTime={task.date} title={task.date ? new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' }) : 'Sin fecha'}>{relativeTaskDate(task.date, iso(new Date()))}</time></small></button><div className="work-card-footer task-actions"><button disabled={busy} className="task-completion-button" aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}>
     <CompletionIcon completed={task.done} />
   </button><button disabled={busy} className="delete-task" title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={() => onDelete(task.id)}><DeleteIcon /></button></div></article>
 }
@@ -144,10 +145,11 @@ function RoutineStreaks({ routine }: { routine: ApiRoutine }) {
 
 function OverviewTaskRow({ task, categoryName, projectName, onEdit, onToggle, onDelete, busy = false, today }: React.ComponentProps<typeof OverviewTask> & { today: string }) {
   return <article className={'overview-work-row' + (task.done ? ' done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
-    <button className="row-completion" disabled={busy} aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}><CompletionIcon completed={task.done} /></button>
+    <button className="row-completion" disabled={busy || (!task.done && Boolean(task.blockedBy?.length))} aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}><CompletionIcon completed={task.done} /></button>
     <button className="row-edit" disabled={busy} aria-label={'Editar tarea ' + task.title} onClick={() => onEdit(task)}>
       <strong>{task.title}</strong>
-      <span className="row-metadata"><time dateTime={task.date} title={new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' })}>{relativeTaskDate(task.date, today)}</time><span aria-hidden="true">·</span><span>{taskTimeLabel(task)}</span><span className="row-category">{projectName || categoryName}</span></span>
+      {task.blockedBy?.length ? <small className="blocked-label">Bloqueada: {task.blockedBy.join(', ')}</small> : null}
+      <span className="row-metadata"><time dateTime={task.date} title={task.date ? new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' }) : 'Sin fecha'}>{relativeTaskDate(task.date, today)}</time><span aria-hidden="true">·</span><span>{taskTimeLabel(task)}</span><span className="row-category">{projectName || categoryName}</span></span>
     </button>
     <button className="row-delete" disabled={busy} title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={() => onDelete(task.id)}><DeleteIcon /></button>
   </article>
@@ -184,6 +186,7 @@ type ProjectListProps = {
   onEditProject: (project: ApiProject) => void
   onDeleteProject: (project: ApiProject) => void
   onChangeProjectStatus?: (project: ApiProject, status: ProjectStatus) => void
+  onLinks?: (task: Task, ids: string[]) => void
   projectBusy?: boolean
 }
 
@@ -258,7 +261,7 @@ function ProjectTaskGroups({ tasks, history, renderTask }: { tasks: Task[]; hist
   </div>
 }
 
-function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onNewProjectTask, onEditProject, onDeleteProject, onChangeProjectStatus, projectBusy, history = false, statusFilter, showUnassigned = true, onlyUnassigned = false, displayTasks }: ProjectListProps & { history?: boolean; statusFilter?: ProjectStatus; showUnassigned?: boolean; onlyUnassigned?: boolean; displayTasks?: Task[] }) {
+function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onNewProjectTask, onEditProject, onDeleteProject, onChangeProjectStatus, projectBusy, onLinks, history = false, statusFilter, showUnassigned = true, onlyUnassigned = false, displayTasks }: ProjectListProps & { history?: boolean; statusFilter?: ProjectStatus; showUnassigned?: boolean; onlyUnassigned?: boolean; displayTasks?: Task[] }) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const projectTasks = useMemo(() => tasks.filter(task => task.taskType === 'project').sort((a, b) => a.date.localeCompare(b.date) || compareDayTasks(a, b)), [tasks])
   const projectById = useMemo(() => new Map(projects.map(project => [project.id, project])), [projects])
@@ -307,7 +310,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
               </button>
             </div>
           </div>
-          <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />
+          {history && onLinks ? <ProjectPlan storageKey={'studycalendar:project-layout:' + project.id} tasks={associated} busy={Boolean(projectBusy)} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} onLinks={onLinks} /> : <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />}
         </div>
       </article>
     })}</div> : <p className="overview-empty">{statusFilter ? 'No hay proyectos ' + projectStatuses.find(status => status.value === statusFilter)?.group.toLowerCase() + '.' : 'No hay proyectos activos.'}</p>)}
@@ -414,7 +417,10 @@ function TaskOverview({ habits, busy, onCompleteRoutine, onOpenRoutines, onOpenP
 }) {
   const { expanded: expandedSections, toggle: toggleSection } = useStoredSections('overview-sections:' + userId, ['daily', 'routine', 'project'])
   const activeProjects = props.projects.filter(project => project.status === 'active')
-  const visibleTasks = visibleOverviewTasks(props.tasks, props.projects)
+  const visibleTasks = visibleOverviewTasks(props.tasks, props.projects).map(task => ({
+    ...task,
+    blockedBy: (task.prerequisiteIds || []).filter(id => !props.tasks.find(row => row.id === id)?.done).map(id => props.tasks.find(row => row.id === id)?.title || 'Tarea no disponible'),
+  }))
   const pendingTasks = filterOverviewTasks(visibleTasks, { query: '', category: '', status: 'pending', sort: 'date' })
   const dailyTasks = pendingTasks.filter(task => task.taskType === 'daily')
   const projectTasks = pendingTasks.filter(task => task.taskType === 'project')
@@ -645,26 +651,25 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   }
   const openNewRoutine = () => { if (habits.ready) openNew(habits.date, '09:00', 'routine') }
   const openNewProjectTask = (project: ApiProject) => {
-    if (busyAction || !initialDataLoaded || !projects.some(item => item.id === project.id && item.status === 'active')) return
-    openNew(today, '09:00', 'project')
+    if (busyAction || !initialDataLoaded || !projects.some(item => item.id === project.id)) return
+    openNew('', '09:00', 'project', false)
     setDraft(current => ({ ...current, projectId: project.id, color: project.color }))
   }
-  const edit = (task: Task) => { setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay }); setTaskError(''); setIsModal(true) }
+  const edit = (task: Task) => { setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay, prerequisiteIds: task.prerequisiteIds || [] }); setTaskError(''); setIsModal(true) }
   const editRoutine = (routine: ApiRoutine) => { setSelected(null); setSelectedRoutine(routine.id); setRoutineActive(routine.active); setDraft({ title: routine.title, categoryId: null, projectId: null, taskType: 'routine', date: habits.date, time: '09:00', endTime: '10:00', color: routine.color, done: false, allDay: false }); setTaskError(''); setIsModal(true) }
   const save = async () => {
     if (busyAction) return
     const invalid = (message: string, name: string) => { setTaskError(message); focusFormField('.task-modal', name) }
     if (!draft.title.trim()) { invalid('Introduce un título.', 'title'); return }
-    if (!draft.date) { invalid('Selecciona una fecha.', 'date'); return }
-    if (draft.taskType !== 'routine' && !draft.allDay) {
+    if (!draft.date && draft.taskType !== 'project') { invalid('Selecciona una fecha.', 'date'); return }
+    if (draft.date && draft.taskType !== 'routine' && !draft.allDay) {
       const validTime = (time: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(time)
       if (!validTime(draft.time)) { invalid('Introduce una hora de inicio válida.', 'start'); return }
       if (!validTime(draft.endTime) || toMinutes(draft.endTime) <= toMinutes(draft.time)) { invalid('La hora de finalización debe ser posterior al inicio, dentro del mismo día.', 'end'); return }
     }
-    if (draft.taskType === 'project' && !draft.projectId) { invalid('Selecciona un proyecto activo o crea uno nuevo.', 'project'); return }
     const chosenProject = projects.find(project => project.id === draft.projectId)
     const original = tasks.find(task => task.id === selected) || overviewTasks.find(task => task.id === selected)
-    if (draft.taskType === 'project' && chosenProject?.status !== 'active' && original?.projectId !== draft.projectId) { invalid('Selecciona un proyecto activo.', 'project'); return }
+    if (draft.taskType === 'project' && draft.projectId && chosenProject?.status !== 'active' && original?.projectId !== draft.projectId) { invalid('Selecciona un proyecto activo.', 'project'); return }
     setTaskError('')
     setBusyAction('save')
     try {
@@ -676,7 +681,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         await habits.refresh()
         setActivityRevision(value => value + 1)
       } else if (selected) {
-        const updatePayload: Partial<Omit<ApiTask, 'id'>> = { title: draft.title.trim(), task_type: draft.taskType, project_id: draft.taskType === 'project' ? draft.projectId : null, date: draft.date, ...taskSchedule(draft), color: draft.color, completed: draft.done }
+        const updatePayload: Partial<Omit<ApiTask, 'id'>> = { title: draft.title.trim(), task_type: draft.taskType, project_id: draft.taskType === 'project' ? draft.projectId : null, date: draft.date || null, ...(draft.date ? taskSchedule(draft) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: draft.prerequisiteIds || [], color: draft.color, completed: draft.done }
         if (!original || original.categoryId !== draft.categoryId) updatePayload.category_id = draft.categoryId
         const updated = fromApi(await tasksApi.update(session, selected, updatePayload))
         updateTaskState(prev => [...prev.filter(task => task.id !== selected), updated])
@@ -701,6 +706,15 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       if (offerUndo) requestAnimationFrame(() => { if (trigger instanceof HTMLElement && !trigger.isConnected) document.querySelector<HTMLButtonElement>('.undo-action')?.focus({ preventScroll: true }) })
       setError('')
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo actualizar la tarea') } finally { setBusyAction(null) }
+  }
+  const changeLinks = async (task: Task, ids: string[]) => {
+    if (busyAction) return
+    setBusyAction('links:' + task.id)
+    try {
+      const updated = fromApi(await tasksApi.update(session, task.id, { prerequisite_ids: ids }))
+      updateTaskState(prev => prev.map(item => item.id === task.id ? updated : item))
+      setError('')
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la conexión') } finally { setBusyAction(null) }
   }
   const toggleDone = async (id: string) => {
     const task = allTasks.find(item => item.id === id) || overviewTasks.find(item => item.id === id)
@@ -809,7 +823,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     try {
       await projectsApi.remove(session, id)
       setProjects(prev => prev.filter(item => item.id !== id))
-      updateTaskState(prev => prev.map(task => task.projectId === id ? { ...task, projectId: null } : task))
+      updateTaskState(prev => prev.filter(task => task.projectId !== id))
       focusAfterProjectDelete.current = true
       setProjectToDelete(null)
       setError('')
@@ -937,7 +951,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         </section>}
       </>) : screen === 'routines' ? (habits.ready ? <RoutinesView userId={session.user.id} habits={habits} activation={habits.activation} activationError={habits.activationError} changedId={habits.changedId} focusId={routineFocusId} routines={routines} onBack={() => setScreen('overview')} onEditRoutine={editRoutine} onToggleRoutine={toggleRoutine} onDeleteRoutine={deleteRoutine} busy={modalBusy} /> : <RoutineLoadState habits={habits} />)
         : (overviewLoading || !overviewLoaded || !initialDataLoaded) ? <div className="calendar-loading" role="status">{readError || error ? 'No se pudieron cargar las tareas.' : 'Cargando tareas…'}</div>
-        : screen === 'projects' ? <ProjectsView tasks={overviewTasks} projects={projects} onNewProjectTask={openNewProjectTask} onChangeProjectStatus={changeProjectStatus} projectBusy={modalBusy} categoryName={categoryName} onBack={() => setScreen('overview')} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
+        : screen === 'projects' ? <ProjectsView onLinks={changeLinks} tasks={overviewTasks} projects={projects} onNewProjectTask={openNewProjectTask} onChangeProjectStatus={changeProjectStatus} projectBusy={modalBusy} categoryName={categoryName} onBack={() => setScreen('overview')} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
         : <>
           <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewProjectTask={openNewProjectTask} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
           <ActivityHeatmap key={session.user.id} session={session} revision={activityRevision} />
@@ -957,14 +971,14 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         <div className="form-grid">
           {draft.taskType !== 'routine' && <label>Categoría<select value={draft.categoryId || ''} onChange={e => { const category = categories.find(item => item.id === e.target.value); setDraft({ ...draft, categoryId: e.target.value || null, color: category?.color || draft.color }) }}><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
           {draft.taskType !== 'routine' && <label>Tipo de tarea<select value={draft.taskType} onChange={e => { setTaskError(''); setDraft({ ...draft, taskType: e.target.value as TaskType }) }}><option value="daily">Tarea personal</option><option value="project">Tarea de proyecto</option></select></label>}
-          {draft.taskType === 'project' && <div className="project-field"><label>Proyecto<select name="project" required value={draft.projectId || ''} aria-describedby="project-field-hint" onChange={e => { const project = projects.find(item => item.id === e.target.value); setTaskError(''); setDraft({ ...draft, projectId: e.target.value || null, color: project?.color || draft.color }) }}><option value="">Selecciona un proyecto activo</option>{selectableProjects.map(project => <option key={project.id} value={project.id}>{project.name}{project.status === 'active' ? '' : ' · ' + projectStatuses.find(status => status.value === project.status)?.label}</option>)}</select></label>
+          {draft.taskType === 'project' && <div className="project-field"><label>Proyecto<select name="project" value={draft.projectId || ''} aria-describedby="project-field-hint" onChange={e => { const project = projects.find(item => item.id === e.target.value); setTaskError(''); setDraft({ ...draft, projectId: e.target.value || null, color: project?.color || draft.color }) }}><option value="">Sin proyecto</option>{selectableProjects.map(project => <option key={project.id} value={project.id}>{project.name}{project.status === 'active' ? '' : ' · ' + projectStatuses.find(status => status.value === project.status)?.label}</option>)}</select></label>
             <p className="form-hint" id="project-field-hint">{selectedProject && selectedProject.status !== 'active' ? 'Este proyecto está ' + (selectedProject.status === 'inactive' ? 'inactivo' : 'completado') + '. Sus tareas se consultan en Proyectos y Calendario.' : selectableProjects.length ? 'Puedes crear un proyecto sin perder esta tarea.' : 'Crea tu primer proyecto para asociar esta tarea.'}</p>
             <button type="button" className="inline-create" onClick={() => openProject()}>＋ Crear proyecto</button>
           </div>}
-          {!selectedRoutine && <label>{draft.taskType === 'routine' ? 'Fecha inicial' : 'Fecha'}<input name="date" type="date" required value={draft.date} onChange={e => { setTaskError(''); setDraft({ ...draft, date: e.target.value }) }} /></label>}
+          {!selectedRoutine && <label>{draft.taskType === 'routine' ? 'Fecha inicial' : draft.taskType === 'project' ? 'Fecha (opcional)' : 'Fecha'}<input name="date" type="date" required={draft.taskType !== 'project'} value={draft.date} onChange={e => { setTaskError(''); setDraft({ ...draft, date: e.target.value }) }} /></label>}
         </div>
-        {draft.taskType !== 'routine' && <label className="completed-toggle"><input type="checkbox" checked={draft.allDay} onChange={e => setDraft({ ...draft, allDay: e.target.checked })} /><span>Todo el día</span></label>}
-        {draft.taskType !== 'routine' && !draft.allDay && <><div className="form-grid schedule-fields">
+        {draft.date && draft.taskType !== 'routine' && <label className="completed-toggle"><input type="checkbox" checked={draft.allDay} onChange={e => setDraft({ ...draft, allDay: e.target.checked })} /><span>Todo el día</span></label>}
+        {draft.date && draft.taskType !== 'routine' && !draft.allDay && <><div className="form-grid schedule-fields">
           <label>Hora de inicio<input name="start" type="time" step="60" required value={draft.time} onChange={e => { setTaskError(''); setDraft({ ...draft, ...startWithDuration(e.target.value, draft.time, draft.endTime) }) }} /></label>
           <label>Hora de finalización<input name="end" type="time" step="60" required value={draft.endTime} onChange={e => { setTaskError(''); setDraft({ ...draft, endTime: e.target.value }) }} /></label>
         </div><p className="form-hint">Al cambiar el inicio se conserva la duración hasta las 23:59. Las tareas terminan el mismo día.</p></>}
@@ -995,7 +1009,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setTaskToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
     </FormDialog>}
     {projectToDelete && <FormDialog className="delete-project-modal" title="Eliminar proyecto" busy={modalBusy} initialFocus="[data-cancel-delete]" onClose={() => { if (!modalBusy) setProjectToDelete(null) }} onSubmit={() => void confirmDeleteProject()}>
-      <p className="delete-task-prompt">¿Eliminar «{projectToDelete.name}»? Sus tareas quedarán sin proyecto.</p>
+      <p className="delete-task-prompt">¿Eliminar «{projectToDelete.name}»? Se eliminarán todas sus tareas, incluidas las completadas, y sus conexiones. Esta acción no se puede deshacer.</p>
       {deleteProjectError && <p className="form-error" role="alert">{deleteProjectError}</p>}
       <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setProjectToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
     </FormDialog>}

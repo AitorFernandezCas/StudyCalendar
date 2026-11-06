@@ -5,7 +5,7 @@ from ..domain import Task
 from ...shared.domain import BusinessError
 
 LEGACY_TASK_SELECT = "id,title,category_id,project_id,task_type,date,start_time,end_time,color,completed"
-TASK_SELECT = LEGACY_TASK_SELECT + ",all_day"
+TASK_SELECT = LEGACY_TASK_SELECT + ",all_day,prerequisite_ids"
 
 
 def missing_all_day(error: APIError) -> bool:
@@ -25,12 +25,19 @@ class SupabaseTaskRepository:
         return self.database.table("tasks")
 
     def read_rows(self, columns: str, start: date | None, end: date | None) -> list[dict]:
-        query = self.table().select(columns).neq("task_type", "routine")
-        if start:
-            query = query.gte("date", start.isoformat())
-        if end:
-            query = query.lte("date", end.isoformat())
-        return query.order("date").order("start_time").execute().data or []
+        result = []
+        offset = 0
+        while True:
+            query = self.table().select(columns).neq("task_type", "routine")
+            if start:
+                query = query.gte("date", start.isoformat())
+            if end:
+                query = query.lte("date", end.isoformat())
+            page = query.order("date").order("start_time").order("id").range(offset, offset + 499).execute().data or []
+            result.extend(page)
+            if len(page) < 500:
+                return result
+            offset += 500
 
     def list(self, start: date | None = None, end: date | None = None) -> list[Task]:
         if self.all_day_available is False:
