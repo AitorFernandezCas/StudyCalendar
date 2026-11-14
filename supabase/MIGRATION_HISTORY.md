@@ -81,6 +81,8 @@ Se conservaron las huellas de los campos anteriores de 36 tareas, 4 proyectos, 4
 
 El historial remoto contiene además migraciones de FinanceTracker posteriores a `project_status`; pertenecen al otro proyecto compartido y no se modificaron. El usuario pidió iniciar StudyCalendar localmente y aplazar la publicación en Render.
 
-## Sincronización offline: preparada, pendiente de activación
+## Sincronización offline: aplicada el 14 de noviembre de 2026
 
-El CLI 3.1.0 generó `20261113224726_offline_sync.sql`. No se ha aplicado al proyecto compartido. Sus pruebas se ejecutan con PostgreSQL 17 y PostgREST desechables; no cambian el historial remoto. La activación requiere copia privada y publicación coordinada de backend/web compatibles, según `DEPLOYMENT.md`. No reejecutar migraciones anteriores ni modificar las entradas de FinanceTracker. El número definitivo registrado por el proveedor se documentará tras una aplicación autorizada.
+El CLI 3.1.0 generó `20261113224726_offline_sync.sql`. Se aplicó solo esta migración tras confirmación de copia privada y autorización expresa del usuario, después del CI y los despliegues compatibles de la PR #26. Se renombró como `20261114133419_offline_sync.sql` para coincidir con la versión remota, sin cambiar el SQL (SHA256 `9AD2EC0C996DC9A5DECB5F70CBC6BBE4C4751F564BD990790F770A874C9EF7EA`). No reejecutarla ni reparar el historial anterior o las entradas de FinanceTracker.
+
+Las huellas completas y recuentos de las siete tablas de negocio coincidieron: 40 tareas, 4 proyectos, 4 categorías, 7 rutinas, 7 períodos, 44 completaciones y 1 preferencia. También se conservaron las 27 políticas originales y `routine_summaries`. Las tres tablas nuevas tienen RLS y solo SELECT propio para authenticated; no permiten escrituras directas ni acceso anónimo. `sync_snapshot` devolvió protocolo 1 con rol authenticated y todas las filas del propietario. El asesor señala la exposición deliberada de `sync_apply` como SECURITY DEFINER; su validación de identidad/propiedad, permisos restringidos y justificación se documentan en `docs/sync-protocol.md` y `DEPLOYMENT.md`.
