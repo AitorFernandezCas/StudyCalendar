@@ -80,3 +80,7 @@ proyectos desechables en memoria, sin cambiar el estado de los proyectos reales.
 Se conservaron las huellas de los campos anteriores de 36 tareas, 4 proyectos, 4 categorías, 7 rutinas, 7 períodos, 44 completaciones y 1 preferencia. Las 36 tareas empiezan con `prerequisite_ids=[]`. RLS sigue activo en las siete tablas, con 27 políticas; `routine_summaries` conserva su huella. Los tres triggers nuevos usan SECURITY INVOKER y `search_path=pg_catalog`. El asesor de seguridad conserva solo su aviso previo sobre protección de contraseñas filtradas, sin hallazgos nuevos.
 
 El historial remoto contiene además migraciones de FinanceTracker posteriores a `project_status`; pertenecen al otro proyecto compartido y no se modificaron. El usuario pidió iniciar StudyCalendar localmente y aplazar la publicación en Render.
+
+## Sincronización offline: preparada, pendiente de activación
+
+El CLI 3.1.0 generó `20261113224726_offline_sync.sql`. No se ha aplicado al proyecto compartido. Sus pruebas se ejecutan con PostgreSQL 17 y PostgREST desechables; no cambian el historial remoto. La activación requiere copia privada y publicación coordinada de backend/web compatibles, según `DEPLOYMENT.md`. No reejecutar migraciones anteriores ni modificar las entradas de FinanceTracker. El número definitivo registrado por el proveedor se documentará tras una aplicación autorizada.

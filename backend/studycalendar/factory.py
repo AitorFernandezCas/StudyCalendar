@@ -70,6 +70,7 @@ def create_app(settings: Settings | None = None, dependencies: Dependencies | No
     from .routines.adapters.http import blueprint as routines
     from .queries.http import blueprint as queries
     from .preferences.adapters.http import blueprint as preferences
-    for blueprint in (categories, projects, tasks, routines, queries, preferences):
+    from .sync.adapters.http import blueprint as sync
+    for blueprint in (categories, projects, tasks, routines, queries, preferences, sync):
         app.register_blueprint(blueprint)
     return app

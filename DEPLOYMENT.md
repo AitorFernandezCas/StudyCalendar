@@ -4,7 +4,7 @@
 
 | Componente | Servicio | Configuración |
 | --- | --- | --- |
-| CI | GitHub Actions | Node 24, Python 3.12, build y pruebas |
+| CI | GitHub Actions | Node 24, Python 3.12, JDK 17 y comprobaciones Android |
 | Frontend | Render Static Site | CDN, HTTPS y dominio `onrender.com` |
 | Backend | Render Web Service Free | Frankfurt, Flask con Gunicorn |
 | Datos y sesión | Supabase Free existente | Esquema `Task`, Auth y RLS |
@@ -15,6 +15,13 @@ comprobar sus límites de gasto antes de conectar este proyecto. Revisar tambié
 la cuota gratuita y el presupuesto de GitHub Actions, especialmente en repositorios
 privados. La configuración del repositorio no puede imponer límites de facturación
 a las cuentas de los proveedores.
+
+El proyecto Android añade el check `Android` (pruebas JVM, compilación debug y
+lint), que se incorpora al resultado agregado `CI completa`. No utiliza
+credenciales Supabase ni publica APKs desde CI. La aplicación está en fase local;
+su estado y las pruebas que requieren un teléfono figuran en
+[android/README.md](android/README.md). La publicación web conserva sus servicios
+existentes y no se han añadido migraciones por esta entrega inicial.
 
 Render Free suspende el backend después de 15 minutos sin tráfico y el siguiente
 acceso puede tardar aproximadamente un minuto. El frontend muestra un aviso a los
@@ -55,8 +62,8 @@ sin reconstruir no actualiza el JavaScript ya publicado.
 ## CI y despliegue continuo
 
 El workflow `CI` se ejecuta en pull requests hacia `main`, pushes a `main` y
-ejecuciones manuales. Los trabajos Frontend y Backend son independientes; `CI
-completa` exige que ambos terminen correctamente, incluso si alguno se cancela o
+ejecuciones manuales. Los trabajos Frontend, Backend y Android son independientes; `CI
+completa` exige que todos terminen correctamente, incluso si alguno se cancela o
 se omite. CI usa URLs y claves ficticias, no credenciales de Supabase.
 
 El frontend ejecuta sus comandos desde `frontend/`, instala el lockfile con
@@ -412,3 +419,25 @@ Arranque local verificado: frontend `http://localhost:5174`, API `http://127.0.0
 El usuario autorizó crear y fusionar la PR de planes de proyectos tras CI, utilizando el pipeline existente de `main`. Esta autorización sustituye el aplazamiento anterior de la publicación. La migración `20261106122252_project_plans` ya está aplicada: no volver a ejecutarla desde CI ni Render. La PR incluye tareas sin fecha, dependencias, borrado completo de proyectos, movimiento libre del diagrama, foco temporal por rama, nombres completos sin hover y expansión suave de controles. Las capturas de la fixture están en `docs/screenshots/project-plan.jpg` y `docs/screenshots/branch-focus.jpg`.
 
 Verificación local del estado final: 35 pruebas frontend, 183 backend y build correctos; las comprobaciones SQL aisladas de migración/RLS/borrado/cascada Auth/rollback también pasaron. El merge debe esperar a Frontend, Backend y CI completa. Render conserva su integración y despliegue automático tras checks; esta PR no cambia servicios, planes, variables ni autenticación global.
+
+### Conexión Android 0.3.0 (consulta)
+
+Android se conecta directamente al mismo proyecto Supabase mediante Auth y Data API; usa únicamente su clave publishable pública. No depende de Render para consultar. Mantiene el modo local separado, incorpora copia por cuenta y renovación de tokens con Android Keystore. Las escrituras sincronizadas siguen deshabilitadas hasta implementar el contrato aprobado. No se ha aplicado ninguna migración de Supabase ni se ha cambiado la configuración compartida de Auth/RLS por esta entrega. Véase `android/README.md` para límites y verificación.
+
+## Activación de sincronización Android/web (preparada, no aplicada)
+
+La implementación y su contrato se describen en [docs/sync-protocol.md](docs/sync-protocol.md). La nueva migración local es `20261113224726_offline_sync.sql`, generada con CLI 3.1.0. Añade registros de operaciones/revisiones/historia y funciones del protocolo 1; no modifica filas existentes, pero **bloquea escrituras de clientes antiguos**. No aplicar el conjunto histórico de migraciones ni ejecutar `db push`.
+
+Antes de activarla se necesita una copia privada reciente según el procedimiento de este documento, revisión de RLS/permisos/asesores y confirmación del despliegue coordinado. Sigue vigente la indicación anterior de aplazar publicaciones en Render; la preparación local no la revoca. La versión 0.4.0 instalada conserva consulta mientras el contrato no esté disponible.
+
+Orden de activación:
+
+1. Verificar y guardar una copia privada; comprobar cuotas/plan gratuitos y correspondencia del historial remoto. Ejecutar las pruebas SQL/HTTP aisladas y las comprobaciones frontend/backend/Android.
+2. Publicar primero backend y frontend compatibles después de que CI completa pase. Hasta que exista el contrato, estos clientes conservan compatibilidad de lectura y rutas existentes. Comprobar las cuatro rutas y acceso a cuenta. No activar escrituras móviles todavía.
+3. Aplicar **solo** la nueva migración en una transacción, durante una ventana coordinada sin escrituras. Comprobar huellas/recuentos de las filas de negocio antes/después, RLS, permisos y ausencia de nuevas incidencias de seguridad. Alinear el nombre local con la versión remota realmente registrada si el proveedor asigna otra; no reparar el historial ajeno.
+4. Confirmar que `/api/sync/snapshot` y la RPC directa anuncian protocolo 1. Actualizar el Poco y la web. Verificar con datos desechables una escritura en cada dirección, edición simultánea de campos distintos, conflicto del mismo campo, reenvío tras pérdida de respuesta, eliminación y marca de hábito offline tras cambio de día/pausa.
+5. Una pestaña antigua debe pedir actualizar y conservar el borrador cuando sea posible. No desbloquear CRUD antiguo ni retirar la guarda para evitar ese mensaje.
+
+No revertir solo el código web a una versión que no admite el contrato: las guardas seguirían activas. Ante una incidencia, conservar datos/colas/recibos y suspender nuevas escrituras mientras se prepara una corrección compatible. Revertir código no revierte una migración ni una operación ya sincronizada. No degradar el APK con operaciones pendientes sin preservar primero su copia privada.
+
+El 2026-11-14 el usuario confirmó una copia privada reciente del esquema Task y autorizó expresamente publicar web/backend compatibles y aplicar la nueva migración. Confirmó «Aitor's workspace» (`tea-db2nanek1f9s739ftu2g`) para ambos servicios. La autorización sustituye el aplazamiento previo de Render para esta entrega. La activación se registrará con versión remota, commit, comprobaciones y despliegues al terminar; esta constancia no afirma que ya se haya aplicado.

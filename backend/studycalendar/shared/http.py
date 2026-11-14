@@ -10,6 +10,7 @@ from ..routines.application import RoutineService
 from ..queries.application import QueryService
 from ..preferences.application import PreferencesService
 from .domain import Model
+from ..sync.application import SyncService
 
 
 def serialize(value):
@@ -60,6 +61,7 @@ def require_user(view):
         # Initialization must release the lease too if composition unexpectedly fails.
         with stack:
             clock = dependencies.clock
+            g.sync = SyncService(repositories.sync, user)
             g.services = Services(
                 TaskService(repositories.tasks, repositories.categories, repositories.projects, user, clock),
                 CategoryService(repositories.categories, user, repositories.tasks),

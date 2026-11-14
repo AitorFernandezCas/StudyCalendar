@@ -20,6 +20,7 @@ from ..routines.adapters.supabase import SupabaseRoutineRepository, SupabaseRout
 from ..queries.adapters.supabase import SupabaseActivityRepository
 from ..preferences.adapters.supabase import SupabasePreferencesRepository
 from .domain import User
+from ..sync.adapters.supabase import SupabaseSyncGateway
 
 
 def token_expiry(token: str) -> float | None:
@@ -144,6 +145,7 @@ class SupabaseRuntime:
                 SupabaseRoutineSummaries(database),
                 SupabaseActivityRepository(database, user),
                 SupabasePreferencesRepository(database, user),
+                SupabaseSyncGateway(database),
             )
 
     def close(self) -> None:

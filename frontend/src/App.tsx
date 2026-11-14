@@ -1,3 +1,5 @@
+import { SyncConflicts } from './components/SyncConflicts'
+import type { SyncBase, SyncConflict } from './lib/syncApi'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { bootstrapApi, calendarApi, categoriesApi, projectsApi, routinesApi, tasksApi, type ApiCategory, type ApiProject, type ApiRoutine, type ApiTask, type ProjectStatus } from './lib/api'
@@ -33,7 +35,7 @@ const colors = ['#7c5cff', '#ee7b6f', '#f2b84b', '#3fba91', '#4f8ff7']
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (d: Date) => String(d.getFullYear()) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute }
-const fromApi = (task: ApiTask): Task => ({ id: task.id, title: task.title, categoryId: task.category_id, projectId: task.project_id, taskType: task.task_type, date: task.date || '', time: task.start_time?.slice(0, 5) || '09:00', endTime: task.end_time?.slice(0, 5) || '10:00', prerequisiteIds: task.prerequisite_ids || [], color: task.color, done: task.completed, allDay: task.all_day ?? false })
+const fromApi = (task: ApiTask): Task => ({ sync: task._sync, id: task.id, title: task.title, categoryId: task.category_id, projectId: task.project_id, taskType: task.task_type, date: task.date || '', time: task.start_time?.slice(0, 5) || '09:00', endTime: task.end_time?.slice(0, 5) || '10:00', prerequisiteIds: task.prerequisite_ids || [], color: task.color, done: task.completed, allDay: task.all_day ?? false })
 const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, project_id: task.projectId, task_type: task.taskType, date: task.date || null, ...(task.date ? taskSchedule(task) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: task.prerequisiteIds || [], color: task.color, completed: task.done })
 
 const compareDayTasks = (a: Task, b: Task) => Number(b.allDay) - Number(a.allDay) || (a.allDay ? a.title.localeCompare(b.title, 'es') : a.time.localeCompare(b.time)) || a.id.localeCompare(b.id)
@@ -537,6 +539,9 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const [routineActive, setRoutineActive] = useState(true)
   const [categoryDraft, setCategoryDraft] = useState({ name: '', color: colors[0] })
   const [projectDraft, setProjectDraft] = useState({ name: '', color: colors[1] })
+  const [editBase, setEditBase] = useState<SyncBase | undefined>(undefined)
+  const [projectBase, setProjectBase] = useState<SyncBase | undefined>(undefined)
+  const [categoryBase, setCategoryBase] = useState<SyncBase | undefined>(undefined)
   const [draft, setDraft] = useState<Omit<Task, 'id'>>({ title: '', categoryId: null, projectId: null, taskType: 'daily', date: iso(new Date()), time: '09:00', endTime: '10:00', color: colors[0], done: false, allDay: true })
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = new Date(weekStart); d.setDate(d.getDate() + i); return d }), [weekStart])
   const today = useLocalDate()
@@ -554,6 +559,21 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const bootstrapRangeRef = useRef<string | null>(null)
   const isReading = loading || calendarLoading || overviewLoading || habits.loading || settings.loading
   const readError = Object.values(readErrors).filter(Boolean).join(' ')
+  const syncResolved = (conflict: SyncConflict) => {
+    const { entity, id } = conflict.operation
+    // Let the nested conflict dialog restore its inert/focus state before
+    // closing the originating form. Other drafts remain open.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if ((entity === 'tasks' && selected === id) || (entity === 'routine' && selectedRoutine === id)) setIsModal(false)
+      if (entity === 'projects' && projectSelected === id) setProjectModal(false)
+      if (entity === 'category' && categorySelected === id) setCategoryModal(false)
+      if (entity === 'tasks' && taskToDelete?.id === id) setTaskToDelete(null)
+      if (entity === 'projects' && projectToDelete?.id === id) setProjectToDelete(null)
+    }))
+    setBootstrapAttempt(attempt => attempt + 1)
+    setActivityRevision(value => value + 1)
+    void habits.refresh(); void settings.refresh()
+  }
   const retryReads = () => {
     setReadErrors({ bootstrap: '', calendar: '', overview: '' })
     setBootstrapAttempt(attempt => attempt + 1)
@@ -655,8 +675,8 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     openNew('', '09:00', 'project', false)
     setDraft(current => ({ ...current, projectId: project.id, color: project.color }))
   }
-  const edit = (task: Task) => { setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay, prerequisiteIds: task.prerequisiteIds || [] }); setTaskError(''); setIsModal(true) }
-  const editRoutine = (routine: ApiRoutine) => { setSelected(null); setSelectedRoutine(routine.id); setRoutineActive(routine.active); setDraft({ title: routine.title, categoryId: null, projectId: null, taskType: 'routine', date: habits.date, time: '09:00', endTime: '10:00', color: routine.color, done: false, allDay: false }); setTaskError(''); setIsModal(true) }
+  const edit = (task: Task) => { setEditBase(task.sync); setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay, prerequisiteIds: task.prerequisiteIds || [] }); setTaskError(''); setIsModal(true) }
+  const editRoutine = (routine: ApiRoutine) => { setEditBase(routine._sync); setSelected(null); setSelectedRoutine(routine.id); setRoutineActive(routine.active); setDraft({ title: routine.title, categoryId: null, projectId: null, taskType: 'routine', date: habits.date, time: '09:00', endTime: '10:00', color: routine.color, done: false, allDay: false }); setTaskError(''); setIsModal(true) }
   const save = async () => {
     if (busyAction) return
     const invalid = (message: string, name: string) => { setTaskError(message); focusFormField('.task-modal', name) }
@@ -675,7 +695,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     try {
       if (draft.taskType === 'routine') {
         const payload = { title: draft.title.trim(), color: draft.color, active: routineActive }
-        if (selectedRoutine) await routinesApi.update(session, selectedRoutine, payload)
+        if (selectedRoutine) await routinesApi.update(session, selectedRoutine, payload, editBase)
         else await routinesApi.create(session, { ...payload, starts_on: draft.date })
         setIsModal(false)
         await habits.refresh()
@@ -683,7 +703,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       } else if (selected) {
         const updatePayload: Partial<Omit<ApiTask, 'id'>> = { title: draft.title.trim(), task_type: draft.taskType, project_id: draft.taskType === 'project' ? draft.projectId : null, date: draft.date || null, ...(draft.date ? taskSchedule(draft) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: draft.prerequisiteIds || [], color: draft.color, completed: draft.done }
         if (!original || original.categoryId !== draft.categoryId) updatePayload.category_id = draft.categoryId
-        const updated = fromApi(await tasksApi.update(session, selected, updatePayload))
+        const updated = fromApi(await tasksApi.update(session, selected, updatePayload, editBase))
         updateTaskState(prev => [...prev.filter(task => task.id !== selected), updated])
       } else {
         const created = fromApi(await tasksApi.create(session, toApi(draft)))
@@ -700,7 +720,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     const trigger = document.activeElement
     setBusyAction('toggle:' + task.id)
     try {
-      const updated = fromApi(await tasksApi.update(session, task.id, { completed }))
+      const updated = fromApi(await tasksApi.update(session, task.id, { completed }, task.sync))
       updateTaskState(prev => prev.map(item => item.id === task.id ? updated : item))
       setNotice({ message: offerUndo ? '«' + task.title + '» ' + (completed ? 'completada.' : 'marcada como pendiente.') : 'Cambio deshecho.', undo: offerUndo ? () => setTaskCompletion(updated, task.done, false) : undefined })
       if (offerUndo) requestAnimationFrame(() => { if (trigger instanceof HTMLElement && !trigger.isConnected) document.querySelector<HTMLButtonElement>('.undo-action')?.focus({ preventScroll: true }) })
@@ -711,7 +731,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     if (busyAction) return
     setBusyAction('links:' + task.id)
     try {
-      const updated = fromApi(await tasksApi.update(session, task.id, { prerequisite_ids: ids }))
+      const updated = fromApi(await tasksApi.update(session, task.id, { prerequisite_ids: ids }, task.sync))
       updateTaskState(prev => prev.map(item => item.id === task.id ? updated : item))
       setError('')
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la conexión') } finally { setBusyAction(null) }
@@ -733,7 +753,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     setBusyAction('delete:' + id)
     setDeleteTaskError('')
     try {
-      await tasksApi.remove(session, id)
+      await tasksApi.remove(session, id, taskToDelete.sync)
       updateTaskState(prev => prev.filter(item => item.id !== id))
       focusAfterDelete.current = true
       setTaskToDelete(null)
@@ -751,14 +771,14 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     const schedule = destination === 'allDay' ? { all_day: true } : typeof destination === 'number' ? droppedTaskSchedule(task, destination) : {}
     if (busyAction) return
     setBusyAction('move:' + id)
-    try { const updated = fromApi(await tasksApi.update(session, id, { date, ...schedule })); updateTaskState(prev => [...prev.filter(item => item.id !== id), updated]) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo mover la tarea') } finally { setBusyAction(null) }
+    try { const updated = fromApi(await tasksApi.update(session, id, { date, ...schedule }, task.sync)); updateTaskState(prev => [...prev.filter(item => item.id !== id), updated]) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo mover la tarea') } finally { setBusyAction(null) }
   }
   const rescheduleTask = async (task: Task, schedule: TaskSchedule): Promise<boolean> => {
     if (busyAction) return false
     setBusyAction('move:' + task.id)
     setError('')
     try {
-      const updated = fromApi(await tasksApi.update(session, task.id, { date: schedule.date, start_time: schedule.time, end_time: schedule.endTime, all_day: schedule.allDay ?? false }))
+      const updated = fromApi(await tasksApi.update(session, task.id, { date: schedule.date, start_time: schedule.time, end_time: schedule.endTime, all_day: schedule.allDay ?? false }, task.sync))
       updateTaskState(prev => [...prev.filter(item => item.id !== task.id), updated])
       return true
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar el nuevo horario'); return false } finally { setBusyAction(null) }
@@ -772,7 +792,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const deleteRoutine = async (routine: ApiRoutine) => {
     if (busyAction || !window.confirm('¿Eliminar la rutina “' + routine.title + '”? También se eliminará su historial.')) return
     setBusyAction('routine:' + routine.id)
-    try { await routinesApi.remove(session, routine.id); await habits.refresh(); setActivityRevision(value => value + 1); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar la rutina') } finally { setBusyAction(null) }
+    try { await routinesApi.remove(session, routine.id, routine._sync); await habits.refresh(); setActivityRevision(value => value + 1); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar la rutina') } finally { setBusyAction(null) }
   }
   const setRoutineCompletion = async (routine: ApiRoutine, completed: boolean, offerUndo = true) => {
     if (busyAction || !habits.ready) return
@@ -789,7 +809,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   }
   const completeRoutine = (routine: ApiRoutine) => setRoutineCompletion(routine, !routine.completed_today)
 
-  const openProject = (project?: ApiProject) => { if (busyAction) return; setProjectSelected(project?.id || null); setProjectDraft({ name: project?.name || '', color: project?.color || colors[1] }); setProjectError(''); setProjectModal(true) }
+  const openProject = (project?: ApiProject) => { setProjectBase(project?._sync); if (busyAction) return; setProjectSelected(project?.id || null); setProjectDraft({ name: project?.name || '', color: project?.color || colors[1] }); setProjectError(''); setProjectModal(true) }
   const saveProject = async () => {
     if (busyAction) return
     if (!projectDraft.name.trim()) { setProjectError('Introduce un nombre para el proyecto.'); focusFormField('.project-modal', 'name'); return }
@@ -798,7 +818,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     const payload = { ...projectDraft, name: projectDraft.name.trim() }
     try {
       if (projectSelected) {
-        const updated = await projectsApi.update(session, projectSelected, payload)
+        const updated = await projectsApi.update(session, projectSelected, payload, projectBase)
         setProjects(prev => prev.map(project => project.id === projectSelected ? updated : project))
       } else {
         const created = await projectsApi.create(session, payload)
@@ -821,7 +841,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     setBusyAction('project:' + id)
     setDeleteProjectError('')
     try {
-      await projectsApi.remove(session, id)
+      await projectsApi.remove(session, id, projectToDelete._sync)
       setProjects(prev => prev.filter(item => item.id !== id))
       updateTaskState(prev => prev.filter(task => task.projectId !== id))
       focusAfterProjectDelete.current = true
@@ -839,11 +859,11 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     setBusyAction('project-status:' + project.id)
     setError('')
     try {
-      const updated = await projectsApi.update(session, project.id, { status })
+      const updated = await projectsApi.update(session, project.id, { status }, project._sync)
       setProjects(current => current.map(item => item.id === project.id ? updated : item))
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cambiar el estado del proyecto') } finally { setBusyAction(null) }
   }
-  const openCategory = (category?: Category) => { if (busyAction || !initialDataLoaded) return; setCategorySelected(category?.id || null); setCategoryDraft({ name: category?.name || '', color: category?.color || colors[0] }); setCategoryError(''); setCategoryModal(true) }
+  const openCategory = (category?: Category) => { setCategoryBase(category?._sync); if (busyAction || !initialDataLoaded) return; setCategorySelected(category?.id || null); setCategoryDraft({ name: category?.name || '', color: category?.color || colors[0] }); setCategoryError(''); setCategoryModal(true) }
   const closeCategory = () => { if (!busyAction) setCategoryModal(false) }
   const saveCategory = async () => {
     if (busyAction) return
@@ -852,7 +872,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     setBusyAction('category')
     try {
       if (categorySelected) {
-        const updated = await categoriesApi.update(session, categorySelected, { ...categoryDraft, name: categoryDraft.name.trim() })
+        const updated = await categoriesApi.update(session, categorySelected, { ...categoryDraft, name: categoryDraft.name.trim() }, categoryBase)
         setCategories(prev => prev.map(category => category.id === categorySelected ? updated : category))
         updateTaskState(prev => prev.map(task => task.categoryId === categorySelected ? { ...task, color: updated.color } : task))
       } else {
@@ -870,7 +890,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const deleteCategory = async (category: Category) => {
     if (busyAction || !window.confirm('¿Eliminar “' + category.name + '”? Sus tareas pasarán a “Sin categoría”.')) return
     setBusyAction('category:' + category.id)
-    try { await categoriesApi.remove(session, category.id); setCategories(prev => prev.filter(item => item.id !== category.id)); updateTaskState(prev => prev.map(task => task.categoryId === category.id ? { ...task, categoryId: null } : task)); if (filter === category.id) setFilter('Todas'); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar la categoría') } finally { setBusyAction(null) }
+    try { await categoriesApi.remove(session, category.id, category._sync); setCategories(prev => prev.filter(item => item.id !== category.id)); updateTaskState(prev => prev.map(task => task.categoryId === category.id ? { ...task, categoryId: null } : task)); if (filter === category.id) setFilter('Todas'); setError('') } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar la categoría') } finally { setBusyAction(null) }
   }
 
   const modalBusy = Boolean(busyAction)
@@ -1013,6 +1033,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       {deleteProjectError && <p className="form-error" role="alert">{deleteProjectError}</p>}
       <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setProjectToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
     </FormDialog>}
+    <SyncConflicts session={session} onResolved={syncResolved} />
   </div>
 }
 

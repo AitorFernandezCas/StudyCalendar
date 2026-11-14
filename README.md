@@ -8,6 +8,7 @@ y persistencia y autenticación en Supabase.
 ```text
 frontend/       aplicación React, recursos públicos, scripts y pruebas de Node
 backend/        API Flask y pruebas de Python
+android/        aplicación Kotlin/Compose y núcleo de dominio con pruebas JVM
 supabase/       migraciones SQL e historial de la base de datos
 docs/           capturas y documentación gráfica
 .github/        integración continua
@@ -59,3 +60,13 @@ También se puede entrar en `frontend` y ejecutar directamente `npm ci`,
 
 Consultar [backend/README.md](backend/README.md) para la arquitectura y las pruebas
 con datos desechables, y [DEPLOYMENT.md](DEPLOYMENT.md) para producción.
+
+## Android
+
+La implementación nativa está en [android/](android/README.md), a partir del
+[diseño aprobado](docs/android-planning.md). La vista previa incluye agenda,
+proyectos y rutinas con persistencia local y rachas, además de acceso a Supabase
+para consulta y copia por cuenta. La sincronización de escritura y los conflictos
+están implementados, pendientes de la activación compartida descrita en
+[el contrato](docs/sync-protocol.md). Los recordatorios siguen pendientes. El README Android explica la compilación,
+las pruebas y las limitaciones de la vista previa.

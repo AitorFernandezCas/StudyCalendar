@@ -9,15 +9,19 @@
     "build:production": "node scripts/validate-production-env.mjs && npm run build",
     "test:deployment": "node --test scripts/production-env.test.mjs",
     "test:calendar": "node --test scripts/calendar-drag.test.mjs scripts/task-scheduling.test.mjs scripts/calendar-preferences.test.mjs scripts/project-status.test.mjs scripts/overview.test.mjs scripts/activity.test.mjs scripts/project-plan.test.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:sync": "node --test scripts/sync-api.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "8.3.8"
   },
-  "devDependencies": { "@types/react": "latest", "@types/react-dom": "latest" }
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  }
 }
