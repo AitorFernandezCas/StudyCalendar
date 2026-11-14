@@ -97,13 +97,13 @@ Fuentes de implementación: [Auth REST oficial](https://github.com/supabase/auth
 El usuario confirmó el 2026-11-13 que inició sesión en el Poco y ve sus tareas, proyectos y rutinas reales. Queda verificada la consulta autenticada de extremo a extremo por confirmación del usuario. La compilación final y lint terminaron correctamente, sin errores (13 avisos). Las escrituras sincronizadas continúan pendientes.
 
 
-## Sincronización 0.4.0 · preparada, pendiente de activación compartida
+## Sincronización 0.4.0 · activada el 14 de noviembre de 2026
 
 La implementación permite guardar cambios de cuenta sin conexión, enviarlos con operaciones idempotentes y resolver conflictos por campo. Un borrado remoto no se recrea. La cola, los recibos y la base remota se guardan juntos en la copia privada de esa cuenta; una edición sigue disponible aunque la red esté esperando. WorkManager 2.11.2 solicita envío con red y conserva los pendientes cuando necesita reintentar o renovar acceso. Los conflictos detienen la cola y permanecen al cerrar/reabrir. Cerrar sesión conserva los pendientes para la misma cuenta.
 
 Las marcas de hábitos guardan su día original y sus revisiones de disponibilidad/ajustes; una creación o activación pendiente puede preceder a la marca. No se reutiliza el registro de pruebas de Room como operaciones remotas. Véase [el contrato y sus decisiones de persistencia](../docs/sync-protocol.md).
 
-La versión 0.4.0 está instalada como actualización en el Poco. Hasta aplicar la migración y publicar web/backend compatibles, mantiene la cuenta en consulta. Esta entrega **no ha modificado el esquema ni los datos del Supabase compartido y no ha publicado Render**.
+La versión 0.4.0 está instalada como actualización en el Poco. Se publicaron web/backend compatibles mediante la PR #26 y se aplicó únicamente `20261114133419_offline_sync.sql` tras autorización y confirmación de copia privada. Las filas existentes y sus políticas se conservaron. Pulsa «Actualizar» para descargar el protocolo 1 y habilitar los cambios de cuenta. Recarga también las pestañas anteriores de la web. Véase la evidencia de activación en `../DEPLOYMENT.md`.
 
 Verificación del 2026-11-14:
 
@@ -115,4 +115,4 @@ Verificación del 2026-11-14:
 - PostgreSQL 17 aislado: conservación de filas, RLS/privilegios, recibos, combinaciones/conflictos, concurrencia de dos conexiones, eliminaciones, contexto histórico, creación offline, cambios de hora e historial de más de 1.000 registros correctos.
 - PostgREST real con JWT de prueba: lectura/escritura autenticadas, recuperación de recibo HTTP, separación de usuarios, rechazo anónimo y bloqueo de CRUD antiguo correctos.
 
-Las pruebas de teléfono usan transportes simulados y bases privadas de pruebas. Las de PostgreSQL/PostgREST usan contenedores desechables; no se presentan como escrituras verificadas en producción. La comprobación final móvil↔web requiere activar el contrato según `DEPLOYMENT.md`.
+Las pruebas instrumentadas usan transportes simulados y bases privadas de pruebas; las de PostgreSQL/PostgREST usan contenedores desechables. Además, el contrato ya está activo y el usuario confirmó el 2026-11-14 que su tarea desechable creada desde el Poco aparece en la web. Queda verificado móvil→Supabase→web con sesión real. También confirmó que la edición del título en la web llega al Poco al actualizar: quedan verificadas ambas direcciones con sesión real. Los conflictos siguen verificados mediante las pruebas aisladas descritas arriba.
