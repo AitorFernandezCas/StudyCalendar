@@ -1,0 +1,6 @@
+from typing import Protocol
+
+
+class SyncGateway(Protocol):
+    def snapshot(self) -> dict: ...
+    def apply(self, operation: dict) -> dict: ...

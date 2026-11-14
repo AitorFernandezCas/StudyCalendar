@@ -107,7 +107,7 @@ export function useRoutineHabits(session: Session, resetTime?: string) {
     setLoading(false)
     const version = ++versionRef.current
     try {
-      const updated = await routinesApi.update(session, id, { active })
+      const updated = await routinesApi.update(session, id, { active }, current.routines.find(routine => routine.id === id)?._sync)
       if (!mountedRef.current || tokenRef.current !== session.access_token || lifetime !== lifetimeRef.current) return
       if (version === versionRef.current && routineDayIsCurrent(current)) {
         const next = { ...current, routines: current.routines.map(routine => routine.id === id ? updated : routine) }
@@ -130,9 +130,9 @@ export function useRoutineHabits(session: Session, resetTime?: string) {
     setLoading(false)
     const version = ++versionRef.current
     try {
-      const result = await routinesApi.complete(session, id, snapshot.date, completed)
+      const result = await routinesApi.complete(session, id, snapshot.date, completed, snapshot.routines.find(routine => routine.id === id)?._sync)
       if (!mountedRef.current || tokenRef.current !== session.access_token) return false
-      if (version === versionRef.current && routineDayIsCurrent(result)) {
+      if (version === versionRef.current && snapshot.date === result.date && routineDayIsCurrent(result)) {
         setSnapshot(current => current ? { ...current, date: result.date, timezone: result.timezone, day_started_at: result.day_started_at, next_day_at: result.next_day_at, routines: current.routines.map(routine => routine.id === id ? result.routine : routine) } : null)
         if (snapshotRef.current) snapshotRef.current = { ...snapshotRef.current, date: result.date, timezone: result.timezone, day_started_at: result.day_started_at, next_day_at: result.next_day_at, routines: snapshotRef.current.routines.map(routine => routine.id === id ? result.routine : routine) }
         return true

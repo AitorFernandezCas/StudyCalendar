@@ -9,3 +9,9 @@ backend/.venv/
 __pycache__/
 .pytest_cache/
 supabase/.temp/
+.tools/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/*.jks
+android/*.keystore

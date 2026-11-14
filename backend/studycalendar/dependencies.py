@@ -9,6 +9,7 @@ from .routines.ports import RoutineRepository, RoutineSummaries
 from .queries.ports import ActivityRepository
 from .preferences.ports import PreferencesRepository
 from .shared.domain import User
+from .sync.ports import SyncGateway
 from .shared.ports import Authenticator, Clock
 
 
@@ -21,6 +22,7 @@ class Repositories:
     summaries: RoutineSummaries
     activity: ActivityRepository | None = None
     preferences: PreferencesRepository | None = None
+    sync: SyncGateway | None = None
 
 
 class RepositoryProvider(Protocol):

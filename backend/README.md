@@ -367,3 +367,9 @@ El núcleo valida dependencias y la migración añade validación atómica en Po
 
 El plan visual está en `/proyectos`; `/tareas` muestra solo tareas con fecha. Las tareas sin fecha no contribuyen a la actividad diaria. Ejecutar `python -m pytest backend -q`, `npm run test:calendar`, `npm run build` y `backend/test_project_plans.sql` solo en PostgreSQL aislado antes de la migración. Consultar DEPLOYMENT.md antes de publicar: la migración ya está aplicada al Supabase compartido; la publicación en Render está aplazada por petición del usuario.
 HTTP, del SDK y de visibilidad están en pytest y `npm --prefix frontend run test:calendar`.
+
+## Contrato compartido de sincronización
+
+El módulo `studycalendar/sync` contiene la aplicación y el puerto `SyncGateway`; sus adaptadores HTTP/Supabase exponen una instantánea y el envío de operaciones dentro del ámbito autenticado de cada petición. No abre clientes adicionales ni altera sesiones compartidas. Las rutas existentes se conservan. Los validadores transaccionales, revisiones e idempotencia viven en la migración pendiente del protocolo 1; véanse `docs/sync-protocol.md` y `DEPLOYMENT.md` antes de activarla.
+
+Pruebas opcionales de integración: `python backend/check_sync_db.py` y luego `python backend/check_sync_http.py`, con un contenedor PostgreSQL 17 aislado etiquetado `studycalendar.test=offline-sync`. Estos scripts no usan `DATABASE_URL`, credenciales ni datos del proyecto compartido.

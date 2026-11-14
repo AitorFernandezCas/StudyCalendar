@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { ApiError, type ApiSettings, type SettingsChanges } from '../lib/api'
 import type { useSettings } from '../lib/useSettings'
 
-type Draft = Omit<ApiSettings, 'timezone'>
-const editable = ({ timezone: _timezone, ...values }: ApiSettings): Draft => values
+type Draft = Omit<ApiSettings, 'timezone' | '_sync'>
+const editable = ({ timezone: _timezone, _sync: _sync, ...values }: ApiSettings): Draft => values
 
 export function PreferencesForm({ settings }: { settings: ReturnType<typeof useSettings> }) {
   const id = useId()
@@ -12,6 +12,7 @@ export function PreferencesForm({ settings }: { settings: ReturnType<typeof useS
   const [fields, setFields] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  const dirtyBase = useRef<Record<string, unknown>>({})
   const dirty = useRef(new Set<keyof Draft>())
   useEffect(() => {
     if (settings.data) {
@@ -28,6 +29,7 @@ export function PreferencesForm({ settings }: { settings: ReturnType<typeof useS
     <p>{settings.error || 'Cargando configuración…'}</p>{settings.error && <button className="cancel" onClick={() => void settings.refresh()}>Reintentar</button>}
   </div>
   const change = (name: keyof Draft, value: string) => {
+    if (!dirty.current.has(name)) dirtyBase.current[name] = settings.data?._sync?.state[name]
     dirty.current.add(name)
     setDraft(current => current ? { ...current, [name]: value } : current)
     setFields({})
@@ -57,8 +59,9 @@ export function PreferencesForm({ settings }: { settings: ReturnType<typeof useS
     if (!Object.keys(changes).length) { setMessage('No hay cambios pendientes.'); return }
     setSaveError(''); setFields({}); setMessage('')
     try {
-      const saved = await settings.save(changes)
-      if (saved) { dirty.current.clear(); setDraft(editable(saved)); setMessage('Configuración guardada.'); }
+      const syncBase = settings.data?._sync
+      const saved = await settings.save(changes, syncBase ? { ...syncBase, state: { ...syncBase.state, ...dirtyBase.current } } : undefined)
+      if (saved) { dirty.current.clear(); dirtyBase.current = {}; setDraft(editable(saved)); setMessage('Configuración guardada.'); }
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'No se pudo guardar la configuración.')
       if (e instanceof ApiError) setFields(e.fields)
@@ -79,6 +82,6 @@ export function PreferencesForm({ settings }: { settings: ReturnType<typeof useS
         <p className="settings-hint">Las tareas fuera del horario siguen disponibles en el mes y las demás secciones.</p>
       </div>
     </section>
-    <div className="settings-save"><div className="settings-save-feedback">{saveError ? <p className="settings-field-error" role="alert">{saveError}</p> : message ? <p role="status">{message}</p> : <p role="status">{hasChanges ? 'Tienes cambios sin guardar.' : 'Sin cambios pendientes.'}</p>}</div><div className="settings-save-actions"><button type="button" className="settings-discard" disabled={settings.saving || !hasChanges} onClick={() => { dirty.current.clear(); setDraft(editable(settings.data!)); setFields({}); setSaveError(''); setMessage('Cambios descartados.') }}>Descartar</button><button type="submit" className="save" disabled={settings.saving || !hasChanges}>{settings.saving ? 'Guardando…' : 'Guardar cambios'}</button></div></div>
+    <div className="settings-save"><div className="settings-save-feedback">{saveError ? <p className="settings-field-error" role="alert">{saveError}</p> : message ? <p role="status">{message}</p> : <p role="status">{hasChanges ? 'Tienes cambios sin guardar.' : 'Sin cambios pendientes.'}</p>}</div><div className="settings-save-actions"><button type="button" className="settings-discard" disabled={settings.saving || !hasChanges} onClick={() => { dirty.current.clear(); dirtyBase.current = {}; setDraft(editable(settings.data!)); setFields({}); setSaveError(''); setMessage('Cambios descartados.') }}>Descartar</button><button type="submit" className="save" disabled={settings.saving || !hasChanges}>{settings.saving ? 'Guardando…' : 'Guardar cambios'}</button></div></div>
   </form>
 }

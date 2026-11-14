@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { settingsApi, type ApiSettings, type SettingsChanges } from './api'
+import { settingsApi, type ApiSettings, type SettingsChanges, type SyncBase } from './api'
 
 export function useSettings(session: Session) {
   const [result, setResult] = useState<{ token: string; data: ApiSettings } | null>(null)
@@ -44,7 +44,7 @@ export function useSettings(session: Session) {
       document.removeEventListener('visibilitychange', focus)
     }
   }, [refresh])
-  const save = async (changes: SettingsChanges) => {
+  const save = async (changes: SettingsChanges, base?: SyncBase) => {
     if (savingRef.current) return
     savingRef.current = true
     setSaving(true)
@@ -52,7 +52,7 @@ export function useSettings(session: Session) {
     const generation = ++version.current
     setLoading(false)
     try {
-      const data = await settingsApi.update(session, changes)
+      const data = await settingsApi.update(session, changes, base || result?.data._sync)
       if (generation === version.current && token.current === session.access_token) {
         setResult({ token: session.access_token, data })
         setError('')
