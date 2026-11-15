@@ -11,6 +11,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.Lifecycle
@@ -75,7 +78,17 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    setContent { MaterialTheme(colorScheme = lightColorScheme()) { CalendarApp() } }
+    setContent {
+      val colors = lightColorScheme(
+        primary = Color(0xFF7056ED), onPrimary = Color.White,
+        primaryContainer = Color(0xFFF0EDFF), onPrimaryContainer = Color(0xFF543BCB),
+        background = Color(0xFFF7F8FC), onBackground = Color(0xFF252D3D),
+        surface = Color.White, onSurface = Color(0xFF252D3D),
+        surfaceVariant = Color(0xFFF3F4F9), onSurfaceVariant = Color(0xFF747B89),
+        outline = Color(0xFFE3E5EB)
+      )
+      MaterialTheme(colorScheme = colors) { CalendarApp() }
+    }
   }
 }
 
@@ -126,10 +139,23 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
   val editTask: (Task) -> Unit = { editingTask = it; taskProject = null; taskForm = true }
   BackHandler(screen == "Proyectos" && selectedProject != null) { selectedProject = null }
 
-  Scaffold(bottomBar = {
-    NavigationBar {
+  Scaffold(topBar = {
+    if (screen == "Proyectos" && project != null) {
+      Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+        Box(Modifier.statusBarsPadding()) {
+        TextButton(onClick = { selectedProject = null }, modifier = Modifier.fillMaxWidth()) {
+          Text("‹  Volver a proyectos")
+        }
+        }
+      }
+    }
+  }, bottomBar = {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
       listOf("Agenda" to "▦", "Proyectos" to "▤", "Rutinas" to "✓").forEach { (name, symbol) ->
-        NavigationBarItem(selected = screen == name, onClick = { screen = name },
+        NavigationBarItem(selected = screen == name, onClick = {
+          if (name == "Proyectos") selectedProject = null
+          screen = name
+        },
           icon = { Text(symbol) }, label = { Text(name) })
       }
     }
@@ -148,8 +174,10 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
     LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 100.dp, top = 24.dp)) {
       item {
-        Text("StudyCalendar", style = MaterialTheme.typography.headlineLarge)
-        Text(screen, style = MaterialTheme.typography.titleMedium)
+        Text("StudyCalendar", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        Text(if (screen == "Agenda") "Calendario" else screen, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold)
+        Text(when (screen) { "Agenda" -> "Organiza tu día"; "Proyectos" -> "Tus proyectos y su progreso"; else -> "Tus hábitos diarios" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
       }
       item { AccountPanel(cloud, pending, model::login, model::refresh, model::logout, model::resolve) }
       if (!loaded) item { Text("Cargando tus datos…") }
@@ -173,7 +201,6 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
         "Proyectos" -> {
           if (project != null) {
             item {
-              TextButton(onClick = { selectedProject = null }) { Text("Volver a proyectos") }
               ProjectCard(project, tasks.filter { it.projectId == project.id }, (model.busy || model.readOnly),
                 open = null, edit = { editingProject = project; projectForm = true }, delete = { deletingProject = project })
             }

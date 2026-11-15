@@ -16,15 +16,22 @@ fun AccountPanel(state: CloudState, pending: Int?, login: (String, String) -> Un
   var showLogin by remember { mutableStateOf(false) }
   var showConflict by remember { mutableStateOf(false) }
   var confirmLogout by remember { mutableStateOf(false) }
-  Card(Modifier.fillMaxWidth()) {
+  var expanded by remember { mutableStateOf(false) }
+  OutlinedCard(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Column(Modifier.weight(1f)) {
+          Text(state.session?.email ?: "Datos locales", style = MaterialTheme.typography.titleSmall)
+          Text(when { state.working -> "Sincronizando…"; state.conflicts.isNotEmpty() -> "Conflicto pendiente"; state.session == null -> "Guardados en este dispositivo"; else -> "${state.pending} cambios pendientes" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Cerrar" else "Cuenta") }
+      }
+      if (expanded) {
       if (state.session == null) {
-        Text("Datos locales", style = MaterialTheme.typography.titleMedium)
         Text("Conecta tu cuenta para consultar las tareas, proyectos y rutinas de la web. Tus datos de prueba se conservarán por separado.")
         Text("Cambios locales guardados: ${pending ?: "…"}", style = MaterialTheme.typography.labelMedium)
         TextButton(enabled = !state.working, onClick = { showLogin = !showLogin }) { Text("Conectar con Supabase") }
       } else {
-        Text(state.session.email, style = MaterialTheme.typography.titleMedium)
         Text(if (state.snapshot?.protocol == 1) "Cuenta conectada · cambios guardados sin conexión" else "Cuenta conectada · consulta y copia sin conexión")
         if (state.snapshot?.protocol != 1) Text("El servidor todavía no tiene el contrato de escritura disponible. Los datos de la cuenta se muestran para consulta.")
         else Text("Cambios pendientes: ${state.pending}")
@@ -47,7 +54,8 @@ fun AccountPanel(state: CloudState, pending: Int?, login: (String, String) -> Un
         }) { Text("Iniciar sesión") }
       }
       if (state.working) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Sincronizando datos…") }
-      state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+      }
+      state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
   }
   if (showConflict) state.conflicts.firstOrNull()?.let { entry -> ConflictDialog(entry, { showConflict = false }, resolve) }
