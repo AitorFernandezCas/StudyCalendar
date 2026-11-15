@@ -33,7 +33,11 @@ class AccountReplica(val document: JSONObject) {
   companion object {
     fun load(json: JSONObject, owner: String): AccountReplica {
       require(json.getString("owner") == owner) { "La copia pertenece a otra cuenta." }
-      return (if (json.has("snapshot")) AccountReplica(json) else AccountReplica(JSONObject().put("owner", owner).put("snapshot", json).put("operations", JSONArray()).put("receipts", JSONObject()))).also { it.snapshot() }
+      return (if (json.has("snapshot")) AccountReplica(json) else AccountReplica(JSONObject().put("owner", owner).put("snapshot", json).put("operations", JSONArray()).put("receipts", JSONObject()))).also {
+        val data = it.remote.getJSONObject("data")
+        if (!data.has("category")) data.put("category", JSONArray())
+        it.snapshot()
+      }
     }
   }
 
@@ -81,10 +85,10 @@ class AccountReplica(val document: JSONObject) {
       val project = requireNotNull(view.projects.find { it.id == id }) { "El proyecto ya no está disponible." }.project()
       require(project.status == ProjectStatus.ACTIVE || before?.nullable("project_id") == id) { "Selecciona un proyecto activo." }
     }
+    task.categoryId?.let { id -> require(view.categories.any { it.id == id }) { "La categoría ya no está disponible." } }
     Planning.save(task, view.tasks.map(TaskRow::task))
     val after = normalized(JSONObject(TaskRow.from(task).snapshot())).without("id")
       .put("all_day", task.date != null && task.allDay)
-      .put("category_id", before?.opt("category_id") ?: JSONObject.NULL)
       .put("color", before?.optString("color") ?: "#4F46E5")
     enqueue("tasks", task.id, if (before == null) "create" else "update", after)
   }
@@ -95,6 +99,14 @@ class AccountReplica(val document: JSONObject) {
   fun delete(id: String) {
     Planning.delete(id, snapshot().tasks.map(TaskRow::task))
     enqueue("tasks", id, "delete")
+  }
+  fun saveCategory(category: Category) {
+    category.validate(snapshot().categories.map(CategoryRow::category))
+    enqueue("category", category.id, if (find(render(), "category", category.id) == null) "create" else "update", JSONObject(CategoryRow.from(category).snapshot()).without("id"))
+  }
+  fun deleteCategory(id: String) {
+    require(find(render(), "category", id) != null) { "La categoría ya no está disponible." }
+    enqueue("category", id, "delete")
   }
   fun saveProject(project: Project) {
     project.validate(snapshot().projects.map(ProjectRow::project))
@@ -145,6 +157,7 @@ class AccountReplica(val document: JSONObject) {
     }
     if (action == "delete") {
       replace(json, table, id, null)
+      if (table == "category") rows(json, "tasks").objects().filter { it.nullable("category_id") == id }.forEach { it.put("category_id", JSONObject.NULL) }
       if (table == "projects") json.getJSONObject("data").put("tasks", JSONArray(rows(json, "tasks").objects().filter { it.nullable("project_id") != id }))
       if (table == "routine") listOf("routine_period", "routine_completion").forEach { child -> json.getJSONObject("data").put(child, JSONArray(rows(json, child).objects().filter { it.getString("routine_id") != id })) }
       return

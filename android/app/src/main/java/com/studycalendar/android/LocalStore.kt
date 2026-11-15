@@ -25,22 +25,31 @@ data class TaskRow(
   val projectId: String?,
   val projectTask: Boolean,
   val prerequisites: String,
+  val categoryId: String? = null,
 ) {
   fun task() = Task(id, title, date?.let(LocalDate::parse), start?.let(LocalTime::parse), end?.let(LocalTime::parse), allDay, completed, projectId, projectTask,
-    JSONArray(prerequisites).let { array -> (0 until array.length()).map { array.getString(it) }.toSet() })
+    JSONArray(prerequisites).let { array -> (0 until array.length()).map { array.getString(it) }.toSet() }, categoryId)
 
   fun snapshot(): String = JSONObject().apply {
     put("id", id); put("title", title); put("date", date ?: JSONObject.NULL)
     put("start_time", start ?: JSONObject.NULL); put("end_time", end ?: JSONObject.NULL)
     put("all_day", allDay); put("completed", completed)
+    put("category_id", categoryId ?: JSONObject.NULL)
     put("project_id", projectId ?: JSONObject.NULL); put("task_type", if (projectTask) "project" else "daily")
     put("prerequisite_ids", JSONArray(prerequisites))
   }.toString()
 
   companion object {
     fun from(task: Task) = TaskRow(task.id, task.title.trim(), task.date?.toString(), task.start?.toString(), task.end?.toString(), task.allDay, task.completed,
-      task.projectId, task.projectTask, JSONArray(task.prerequisiteIds.toList()).toString())
+      task.projectId, task.projectTask, JSONArray(task.prerequisiteIds.toList()).toString(), task.categoryId)
   }
+}
+
+@Entity(tableName = "categories")
+data class CategoryRow(@PrimaryKey val id: String, val name: String, val color: String) {
+  fun category() = Category(id, name, color)
+  fun snapshot() = JSONObject().put("id", id).put("name", name).put("color", color).toString()
+  companion object { fun from(category: Category) = CategoryRow(category.id, category.name.trim(), category.color) }
 }
 
 // Local journal only. Sending these records is disabled until the authenticated,
@@ -65,6 +74,11 @@ interface CalendarDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun put(task: TaskRow)
   @Insert suspend fun append(change: LocalChange)
   @Query("DELETE FROM tasks WHERE id = :id") suspend fun delete(id: String)
+  @Query("SELECT * FROM categories ORDER BY name COLLATE NOCASE") fun observeCategories(): Flow<List<CategoryRow>>
+  @Query("SELECT * FROM categories") suspend fun categories(): List<CategoryRow>
+  @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putCategory(category: CategoryRow)
+  @Query("DELETE FROM categories WHERE id = :id") suspend fun deleteCategory(id: String)
+  @Query("UPDATE tasks SET categoryId = NULL WHERE categoryId = :id") suspend fun clearCategory(id: String)
   @Query("SELECT * FROM projects ORDER BY name COLLATE NOCASE") fun observeProjects(): Flow<List<ProjectRow>>
   @Query("SELECT * FROM projects") suspend fun projects(): List<ProjectRow>
   @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putProject(project: ProjectRow)
@@ -77,11 +91,17 @@ interface CalendarDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putCompletion(completion: CompletionRow)
 }
 
-@Database(entities = [TaskRow::class, LocalChange::class, ProjectRow::class, RoutineRow::class, CompletionRow::class], version = 2, exportSchema = true)
+@Database(entities = [TaskRow::class, LocalChange::class, ProjectRow::class, RoutineRow::class, CompletionRow::class, CategoryRow::class], version = 3, exportSchema = true)
 abstract class CalendarDatabase : RoomDatabase() {
   abstract fun calendar(): CalendarDao
 
   companion object {
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tasks ADD COLUMN categoryId TEXT")
+        db.execSQL("CREATE TABLE IF NOT EXISTS categories (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL)")
+      }
+    }
     val MIGRATION_1_2 = object : Migration(1, 2) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS projects (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, status TEXT NOT NULL)")
@@ -97,6 +117,7 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
   val tasks = database.calendar().observeTasks()
   val pending = database.calendar().observePending()
   val projects = database.calendar().observeProjects()
+  val categories = database.calendar().observeCategories()
   val routines = database.calendar().observeRoutines()
 
   override suspend fun save(task: Task) = database.withTransaction {
@@ -106,6 +127,7 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
       val previous = rows.find { it.id == task.id }
       require(project.status == ProjectStatus.ACTIVE || previous?.projectId == id) { "Selecciona un proyecto activo." }
     }
+    task.categoryId?.let { id -> require(database.calendar().categories().any { it.id == id }) { "La categoría ya no está disponible." } }
     Planning.save(task, rows.map(TaskRow::task))
     val row = TaskRow.from(task)
     val previous = rows.find { it.id == task.id }
@@ -126,6 +148,26 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
     val previous = rows.first { it.id == id }
     database.calendar().append(LocalChange(entityId = id, kind = "delete", before = previous.snapshot(), after = null))
     database.calendar().delete(id)
+  }
+
+  override suspend fun saveCategory(category: Category) = database.withTransaction {
+    val dao = database.calendar()
+    val categories = dao.categories()
+    category.validate(categories.map(CategoryRow::category))
+    val row = CategoryRow.from(category)
+    val previous = categories.find { it.id == row.id }
+    if (row != previous) {
+      dao.putCategory(row)
+      dao.append(LocalChange(entityId = row.id, kind = "category.${if (previous == null) "create" else "update"}", before = previous?.snapshot(), after = row.snapshot()))
+    }
+  }
+
+  override suspend fun deleteCategory(id: String) = database.withTransaction {
+    val dao = database.calendar()
+    val previous = requireNotNull(dao.categories().find { it.id == id }) { "La categoría ya no está disponible." }
+    dao.clearCategory(id)
+    dao.deleteCategory(id)
+    dao.append(LocalChange(entityId = id, kind = "category.delete", before = previous.snapshot(), after = null))
   }
 
   override suspend fun saveProject(project: Project) = database.withTransaction {

@@ -4,7 +4,7 @@ Implementación iniciada a partir de [las decisiones aprobadas](../docs/android-
 
 ## Estado de esta entrega
 
-La versión 0.4.0 incluye tres secciones: Agenda, Proyectos y Rutinas. Permite crear, editar, completar, reabrir y eliminar tareas personales con fecha, horario o todo el día; asociar tareas a proyectos, dejarlas sin fecha y seleccionar tareas previas. El formulario permite crear un proyecto conservando el borrador de la tarea.
+La versión 0.4.0 incluye Agenda, Proyectos, Rutinas y Categorías. Permite crear, editar, completar, reabrir y eliminar tareas personales con fecha, horario o todo el día; asociar tareas a proyectos, dejarlas sin fecha y seleccionar tareas previas. El formulario permite crear un proyecto conservando el borrador de la tarea.
 
 Proyectos permite crear, editar nombre/color/estado y eliminar con confirmación de borrado de todas sus tareas y dependencias en una transacción. Agrupa activos, inactivos y completados, muestra progreso sobre todas sus tareas y mantiene las no asignadas bajo «Sin proyecto». Cambiar el estado conserva las tareas y su historial. Las nuevas asociaciones se limitan a proyectos activos; las existentes pueden conservar su proyecto inactivo/completado. La agenda mantiene las tareas fechadas de cualquier estado.
 
@@ -17,6 +17,12 @@ Room conserva cada cambio y su registro local en la misma transacción. La migra
 Esta entrega mantiene el modo local y añade el protocolo de escritura de cuenta, cola offline y resolución de conflictos (detalle al final). La base `local-preview.db` y su registro no se envían ni se asocian automáticamente a una cuenta. Mientras el servidor no anuncie protocolo 1, la cuenta continúa en consulta. El identificador debug termina en `.dev`.
 
 Pendiente de activación compartida: migración y publicación coordinada del contrato de escritura ya implementado. Fuera de esta entrega: diagrama visual de proyectos, edición de preferencias desde Android y programación/acciones de recordatorios.
+
+## Categorías en Android
+
+La sección «Categorías» permite crear, editar y eliminar categorías por nombre y color, tanto en modo local como con cuenta. Las tareas pueden asignarse a una categoría o quedar sin ella; al eliminar una categoría se conservan sus tareas. Las tarjetas usan el color del proyecto cuando existe y, en caso contrario, el de la categoría.
+
+La base local incorpora una migración de Room de la versión 2 a la 3 que conserva tareas y registro. La cuenta usa el protocolo de sincronización existente y su cola offline; los datos locales permanecen separados de cada cuenta. No se requiere ninguna migración de Supabase.
 
 ## Compilación
 

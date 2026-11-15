@@ -15,6 +15,7 @@ data class Task(
   val projectId: String? = null,
   val projectTask: Boolean = false,
   val prerequisiteIds: Set<String> = emptySet(),
+  val categoryId: String? = null,
 ) {
   fun validate() {
     require(title.isNotBlank()) { "Escribe un título." }

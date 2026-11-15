@@ -18,20 +18,20 @@ fun ColorMark(color: String) {
 }
 
 @Composable
-fun TaskCard(task: Task, project: Project?, busy: Boolean, complete: () -> Unit, edit: () -> Unit, delete: () -> Unit) {
-  val accent = project?.color?.let { Color(android.graphics.Color.parseColor(it)) } ?: MaterialTheme.colorScheme.primary
-  OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), colors = CardDefaults.outlinedCardColors(containerColor = if (task.completed) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)) {
+fun TaskCard(task: Task, project: Project?, category: Category?, busy: Boolean, complete: () -> Unit, edit: () -> Unit, delete: () -> Unit) {
+  val accent = (project?.color ?: category?.color)?.let { Color(android.graphics.Color.parseColor(it)) } ?: MaterialTheme.colorScheme.primary
+  OutlinedCard(onClick = edit, enabled = !busy, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), colors = CardDefaults.outlinedCardColors(containerColor = if (task.completed) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)) {
     Row(Modifier.height(IntrinsicSize.Min)) {
     Box(Modifier.width(4.dp).fillMaxHeight().background(accent))
     Column(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
       project?.let { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { ColorMark(it.color); Text(it.name, style = MaterialTheme.typography.labelMedium) } }
+      category?.let { Text(it.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
       Text(task.title, style = MaterialTheme.typography.titleMedium)
       Text(when { task.date == null -> "Sin fecha"; task.allDay -> "${task.date} · Todo el día"; task.start == null -> "${task.date} · Sin horario"; else -> "${task.date} · ${task.start} – ${task.end}" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
       Text(if (task.completed) "Completada" else "Pendiente", style = MaterialTheme.typography.labelMedium, color = accent)
       if (task.prerequisiteIds.isNotEmpty()) Text("Tareas previas: ${task.prerequisiteIds.size}", style = MaterialTheme.typography.labelMedium)
       Row {
         TextButton(enabled = !busy, onClick = complete) { Text(if (task.completed) "Reabrir" else "Completar") }
-        TextButton(enabled = !busy, onClick = edit) { Text("Editar") }
         TextButton(enabled = !busy, onClick = delete) { Text("Eliminar") }
       }
     }

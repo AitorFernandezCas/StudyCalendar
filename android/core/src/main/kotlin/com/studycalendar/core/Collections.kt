@@ -3,6 +3,14 @@ package com.studycalendar.core
 import java.time.LocalDate
 import java.util.UUID
 
+data class Category(val id: String = UUID.randomUUID().toString(), val name: String, val color: String = "#4F46E5") {
+  fun validate(others: List<Category>) {
+    require(name.isNotBlank()) { "Escribe un nombre." }
+    validateColor(color)
+    require(others.none { it.id != id && it.name.trim().equals(name.trim(), ignoreCase = true) }) { "Ya existe una categoría con ese nombre." }
+  }
+}
+
 enum class ProjectStatus(val label: String) {
   ACTIVE("Activo"), INACTIVE("Inactivo"), COMPLETED("Completado")
 }

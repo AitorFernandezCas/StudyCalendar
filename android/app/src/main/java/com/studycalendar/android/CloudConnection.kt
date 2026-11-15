@@ -2,6 +2,7 @@ package com.studycalendar.android
 
 import android.content.Context
 import android.util.AtomicFile
+import com.studycalendar.core.Category
 import com.studycalendar.core.Project
 import com.studycalendar.core.Task
 import kotlinx.coroutines.Dispatchers
@@ -133,6 +134,8 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
   override suspend fun save(task: Task) = edit { save(task) }
   override suspend fun complete(id: String) = edit { complete(id) }
   override suspend fun delete(id: String) = edit { delete(id) }
+  override suspend fun saveCategory(category: Category) = edit { saveCategory(category) }
+  override suspend fun deleteCategory(id: String) = edit { deleteCategory(id) }
   override suspend fun saveProject(project: Project) = edit { saveProject(project) }
   override suspend fun deleteProject(id: String) = edit { deleteProject(id) }
   override suspend fun saveRoutine(id: String, title: String, color: String, active: Boolean, startsOn: LocalDate) = edit { saveRoutine(id, title, color, active, startsOn, Instant.now()) }

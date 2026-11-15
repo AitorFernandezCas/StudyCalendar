@@ -38,6 +38,7 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
   val readOnly get() = cloud.value.session != null && cloud.value.snapshot?.protocol != 1
   val tasks = combine(store.tasks, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.tasks.orEmpty() }
   val pending = store.pending
+  val categories = combine(store.categories, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.categories.orEmpty() }
   val projects = combine(store.projects, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.projects.orEmpty() }
   val routines = combine(store.routines, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.routines.orEmpty() }
   init { viewModelScope.launch { connection.restore(); if (cloud.value.session != null) { connection.refresh(); if (cloud.value.pending > 0) SyncScheduling.enqueue(application) } } }
@@ -112,6 +113,7 @@ private fun habitToday(reset: java.time.LocalTime): LocalDate {
 @Composable
 private fun CalendarApp(model: CalendarViewModel = viewModel()) {
   val rows by model.tasks.collectAsStateWithLifecycle(initialValue = null)
+  val categoryRows by model.categories.collectAsStateWithLifecycle(initialValue = null)
   val projectRows by model.projects.collectAsStateWithLifecycle(initialValue = null)
   val routines by model.routines.collectAsStateWithLifecycle(initialValue = null)
   val pending by model.pending.collectAsStateWithLifecycle(initialValue = null)
@@ -126,6 +128,9 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
   var deletingTask by remember { mutableStateOf<Task?>(null) }
   var taskForm by remember { mutableStateOf(false) }
   var taskProject by remember { mutableStateOf<Project?>(null) }
+  var editingCategory by remember { mutableStateOf<Category?>(null) }
+  var deletingCategory by remember { mutableStateOf<Category?>(null) }
+  var categoryForm by remember { mutableStateOf(false) }
   var editingProject by remember { mutableStateOf<Project?>(null) }
   var deletingProject by remember { mutableStateOf<Project?>(null) }
   var projectForm by remember { mutableStateOf(false) }
@@ -134,8 +139,9 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
   var routineForm by remember { mutableStateOf(false) }
   val tasks = rows.orEmpty().map(TaskRow::task)
   val projects = projectRows.orEmpty().map(ProjectRow::project)
+  val categories = categoryRows.orEmpty().map(CategoryRow::category)
   val project = projects.find { it.id == selectedProject }
-  val loaded = rows != null && projectRows != null && routines != null && (cloud.session == null || cloud.snapshot != null)
+  val loaded = rows != null && categoryRows != null && projectRows != null && routines != null && (cloud.session == null || cloud.snapshot != null)
   val editTask: (Task) -> Unit = { editingTask = it; taskProject = null; taskForm = true }
   BackHandler(screen == "Proyectos" && selectedProject != null) { selectedProject = null }
 
@@ -151,7 +157,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
     }
   }, bottomBar = {
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-      listOf("Agenda" to "▦", "Proyectos" to "▤", "Rutinas" to "✓").forEach { (name, symbol) ->
+      listOf("Agenda" to "▦", "Proyectos" to "▤", "Rutinas" to "✓", "Categorías" to "◉").forEach { (name, symbol) ->
         NavigationBarItem(selected = screen == name, onClick = {
           if (name == "Proyectos") selectedProject = null
           screen = name
@@ -163,12 +169,13 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
     if (loaded && (!cloud.working || cloud.session != null) && !model.readOnly && !(screen == "Proyectos" && project != null && project.status != ProjectStatus.ACTIVE)) {
       ExtendedFloatingActionButton(onClick = {
         when (screen) {
+          "Categorías" -> { editingCategory = null; categoryForm = true }
           "Rutinas" -> { editingRoutine = null; routineForm = true }
           "Proyectos" -> if (project == null) { editingProject = null; projectForm = true }
             else { editingTask = null; taskProject = project; taskForm = true }
           else -> { editingTask = null; taskProject = null; taskForm = true }
         }
-      }) { Text(when { screen == "Rutinas" -> "Nueva rutina"; screen == "Proyectos" && project == null -> "Nuevo proyecto"; else -> "Nueva tarea" }) }
+      }) { Text(when { screen == "Categorías" -> "Nueva categoría"; screen == "Rutinas" -> "Nueva rutina"; screen == "Proyectos" && project == null -> "Nuevo proyecto"; else -> "Nueva tarea" }) }
     }
   }) { padding ->
     LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
@@ -177,7 +184,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
         Text("StudyCalendar", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
         Text(if (screen == "Agenda") "Calendario" else screen, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold)
-        Text(when (screen) { "Agenda" -> "Organiza tu día"; "Proyectos" -> "Tus proyectos y su progreso"; else -> "Tus hábitos diarios" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+        Text(when (screen) { "Agenda" -> "Organiza tu día"; "Proyectos" -> "Tus proyectos y su progreso"; "Categorías" -> "Organiza tus tareas por categoría"; else -> "Tus hábitos diarios" }, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
       }
       item { AccountPanel(cloud, pending, model::login, model::refresh, model::logout, model::resolve) }
       if (!loaded) item { Text("Cargando tus datos…") }
@@ -194,7 +201,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
           val daily = tasks.filter { it.date == date }
           if (daily.isEmpty()) item { Text("No tienes tareas para este día.") }
           items(daily, key = { it.id }) { task ->
-            TaskCard(task, projects.find { it.id == task.projectId }, (model.busy || model.readOnly),
+            TaskCard(task, projects.find { it.id == task.projectId }, categories.find { it.id == task.categoryId }, (model.busy || model.readOnly),
               complete = { model.execute { complete(task.id) } }, edit = { editTask(task) }, delete = { deletingTask = task })
           }
         }
@@ -207,7 +214,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
             val associated = tasks.filter { it.projectId == project.id }
             if (associated.isEmpty()) item { Text("Este proyecto todavía no tiene tareas.") }
             items(associated, key = { it.id }) { task ->
-              TaskCard(task, project, (model.busy || model.readOnly), complete = { model.execute { complete(task.id) } }, edit = { editTask(task) }, delete = { deletingTask = task })
+              TaskCard(task, project, categories.find { it.id == task.categoryId }, (model.busy || model.readOnly), complete = { model.execute { complete(task.id) } }, edit = { editTask(task) }, delete = { deletingTask = task })
             }
           } else {
             if (projects.isEmpty()) item { Text("Crea un proyecto para organizar sus tareas y ver tu progreso.") }
@@ -222,7 +229,20 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
             val unassigned = tasks.filter { it.projectTask && it.projectId == null }
             if (unassigned.isNotEmpty()) item { Text("Sin proyecto", style = MaterialTheme.typography.titleLarge) }
             items(unassigned, key = { it.id }) { task ->
-              TaskCard(task, null, (model.busy || model.readOnly), complete = { model.execute { complete(task.id) } }, edit = { editTask(task) }, delete = { deletingTask = task })
+              TaskCard(task, null, categories.find { it.id == task.categoryId }, (model.busy || model.readOnly), complete = { model.execute { complete(task.id) } }, edit = { editTask(task) }, delete = { deletingTask = task })
+            }
+          }
+        }
+        "Categorías" -> {
+          if (categories.isEmpty()) item { Text("Todavía no tienes categorías. Añade una para organizar tus tareas.") }
+          items(categories, key = { it.id }) { category ->
+            OutlinedCard(Modifier.fillMaxWidth()) {
+              Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                ColorMark(category.color)
+                Text(category.name, Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.titleMedium)
+                TextButton(enabled = !model.busy && !model.readOnly, onClick = { editingCategory = category; categoryForm = true }) { Text("Editar") }
+                TextButton(enabled = !model.busy && !model.readOnly, onClick = { deletingCategory = category }) { Text("Eliminar") }
+              }
             }
           }
         }
@@ -255,8 +275,16 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
       }
     }
   }
-  if (taskForm) TaskForm(editingTask, today, taskProject, projects, tasks, model,
+  if (taskForm) TaskForm(editingTask, today, taskProject, projects, categories, tasks, model,
     dismiss = { taskForm = false }, save = { task -> model.execute(onSuccess = { taskForm = false }) { save(task) } })
+  if (categoryForm) CategoryForm(editingCategory, categories, (model.busy || model.readOnly), dismiss = { categoryForm = false }, save = { value ->
+    model.execute(onSuccess = { categoryForm = false }) { saveCategory(value) }
+  })
+  deletingCategory?.let { value ->
+    DeleteConfirmation("¿Eliminar categoría?", "Las tareas de «${value.name}» se conservarán sin categoría.", (model.busy || model.readOnly), { deletingCategory = null }) {
+      model.execute(onSuccess = { deletingCategory = null }) { deleteCategory(value.id) }
+    }
+  }
   if (projectForm) ProjectForm(editingProject, (model.busy || model.readOnly), dismiss = { projectForm = false }, save = { value ->
     model.execute(onSuccess = { projectForm = false }) { saveProject(value) }
   })

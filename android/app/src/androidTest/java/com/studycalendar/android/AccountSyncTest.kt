@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.studycalendar.core.Category
 import com.studycalendar.core.Task
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -71,6 +72,86 @@ class AccountSyncTest {
       if (loseResponse) { loseResponse = false; throw java.io.IOException("lost response") }
       return result.toString()
     }
+  }
+
+  @Test fun categoryOperationsPreserveAssignmentsAndRenderOfflineDeletion() {
+    val server = Server()
+    val category = Category(id = "99999999-9999-4999-8999-999999999999", name = "Estudio", color = "#123456")
+    val replica = AccountReplica.load(server.snapshot(), user)
+    replica.saveCategory(category)
+    replica.save(replica.snapshot().tasks.single().task().copy(categoryId = category.id))
+    assertEquals(category.id, replica.snapshot().tasks.single().categoryId)
+    assertEquals(category.id, replica.operations.getJSONObject(1).getJSONObject("operation").getJSONObject("changes").getString("category_id"))
+    replica.complete(taskId)
+    assertEquals(category.id, replica.snapshot().tasks.single().categoryId)
+    replica.deleteCategory(category.id)
+    assertTrue(replica.snapshot().categories.isEmpty())
+    assertNull(replica.snapshot().tasks.single().categoryId)
+    assertTrue(replica.snapshot().tasks.single().completed)
+    val reopened = AccountReplica.load(replica.document.copyJson(), user)
+    assertNull(reopened.snapshot().tasks.single().categoryId)
+    assertEquals(4, reopened.pending)
+  }
+
+  @Test fun categoryChangesSynchronizeAfterOfflineAndResolveConflict() = runBlocking {
+    var offline = false
+    var category: JSONObject? = null
+    var categoryRevision = 0L
+    val task = Server().row!!
+    var taskRevision = 1L
+    fun wrapped(row: JSONObject, revision: Long): JSONObject = row.copyJson().put("_sync", JSONObject().put("revision", revision).put("state", row.copyJson()))
+    val transport = CloudTransport { path, _, _, body ->
+      if (path.startsWith("/auth/")) JSONObject().put("user", JSONObject().put("id", user).put("email", "sync@example.invalid"))
+        .put("access_token", "access").put("refresh_token", "refresh").put("expires_in", 3600).toString()
+      else {
+        if (offline) throw java.io.IOException("offline")
+        if (path.endsWith("sync_snapshot")) JSONObject().put("protocol", 1).put("owner", user).put("downloadedAt", Instant.now().toString()).put("data", JSONObject().apply {
+          put("tasks", JSONArray().put(wrapped(task, taskRevision)))
+          put("category", JSONArray().apply { category?.let { put(wrapped(it, categoryRevision)) } })
+          listOf("projects", "routine", "routine_period", "routine_completion", "user_settings").forEach { put(it, JSONArray()) }
+        }).toString()
+        else {
+          val op = body!!.getJSONObject("p_operation")
+          val changes = op.getJSONObject("changes")
+          val isCategory = op.getString("entity") == "category"
+          val current = if (isCategory) category else task
+          val base = op.optJSONObject("base")?.optJSONObject("state")
+          val revision = if (isCategory) categoryRevision else taskRevision
+          val conflict = if (current == null || base == null) emptyList() else changes.keys().asSequence().filter { key -> base.opt(key) != current.opt(key) && changes.opt(key) != current.opt(key) }.toList()
+          if (conflict.isNotEmpty()) JSONObject().put("status", "conflict").put("reason", "fields").put("fields", JSONArray(conflict)).put("remote", JSONObject().put("revision", revision).put("state", current!!.copyJson())).toString()
+          else {
+            val row = current ?: JSONObject().put("id", op.getString("id")).put("user_id", user)
+            changes.keys().forEach { key -> row.put(key, changes.get(key)) }
+            if (isCategory) { category = row; categoryRevision++ } else taskRevision++
+            JSONObject().put("status", "applied").put("row", wrapped(row, if (isCategory) categoryRevision else taskRevision)).toString()
+          }
+        }
+      }
+    }
+    val connection = CloudConnection(context("category-sync"), CloudReader(transport))
+    try {
+      connection.login("sync@example.invalid", "password")
+      val entry = Category(name = "Estudio", color = "#123456")
+      connection.saveCategory(entry)
+      connection.save(connection.state.value.snapshot!!.tasks.single().task().copy(categoryId = entry.id))
+      offline = true
+      connection.refresh()
+      assertEquals(2, connection.state.value.pending)
+      assertEquals(entry.id, connection.state.value.snapshot!!.tasks.single().categoryId)
+      offline = false
+      connection.refresh()
+      assertEquals(0, connection.state.value.pending)
+      assertEquals(entry.id, task.getString("category_id"))
+      connection.saveCategory(entry.copy(color = "#ABCDEF"))
+      category!!.put("color", "#654321"); categoryRevision++
+      connection.refresh()
+      val conflict = connection.state.value.conflicts.single()
+      assertEquals("fields", conflict.getJSONObject("result").getString("reason"))
+      connection.resolve(conflict.getJSONObject("operation").getString("operation_id"), setOf("color"))
+      connection.refresh()
+      assertEquals(0, connection.state.value.pending)
+      assertEquals("#ABCDEF", category!!.getString("color"))
+    } finally { connection.logout() }
   }
 
   @Test fun lostResponseAndProcessReopeningKeepOneImmutableOperation() = runBlocking<Unit> {
