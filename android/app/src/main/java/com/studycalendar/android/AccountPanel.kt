@@ -61,4 +61,3 @@ fun AccountPanel(state: CloudState, pending: Int?, login: (String, String) -> Un
   if (showConflict) state.conflicts.firstOrNull()?.let { entry -> ConflictDialog(entry, { showConflict = false }, resolve) }
   if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text("¿Cerrar sesión?") }, text = { Text("Hay ${state.pending} cambios pendientes. Seguirán guardados en este teléfono para cuando vuelvas a entrar con esta misma cuenta.") }, confirmButton = { TextButton(onClick = { confirmLogout = false; logout() }) { Text("Cerrar sesión") } }, dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Cancelar") } })
 }
-
