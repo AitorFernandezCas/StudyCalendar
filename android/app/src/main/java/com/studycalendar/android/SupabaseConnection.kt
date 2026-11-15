@@ -107,15 +107,16 @@ class SessionVault(context: Context) {
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 fun JSONObject.nullable(name: String): String? = if (isNull(name)) null else getString(name)
 
-data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow>, val routines: List<RoutineRecord>, val reset: LocalTime, val downloadedAt: String, val protocol: Int = 0) {
+data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow>, val routines: List<RoutineRecord>, val reset: LocalTime, val downloadedAt: String, val protocol: Int = 0, val categories: List<CategoryRow> = emptyList()) {
   companion object {
     fun parse(json: JSONObject, user: String): CloudSnapshot {
       require(json.getString("owner") == user) { "La copia pertenece a otra cuenta." }
       val data = json.getJSONObject("data")
       fun rows(table: String) = data.getJSONArray(table).objects().onEach { require(it.getString("user_id") == user) { "Respuesta de otra cuenta." } }
+      val categories = data.optJSONArray("category")?.objects()?.onEach { require(it.getString("user_id") == user) { "Respuesta de otra cuenta." } }?.map { CategoryRow(it.getString("id"), it.getString("name"), it.getString("color")) }.orEmpty()
       val projects = rows("projects").map { ProjectRow.from(Project(it.getString("id"), it.getString("name"), it.getString("color"), ProjectStatus.valueOf(it.getString("status").uppercase()))) }
       val tasks = rows("tasks").filter { it.getString("task_type") != "routine" }.map {
-        TaskRow(it.getString("id"), it.getString("title"), it.nullable("date"), it.nullable("start_time"), it.nullable("end_time"), it.getBoolean("all_day"), it.getBoolean("completed"), it.nullable("project_id"), it.getString("task_type") == "project", it.getJSONArray("prerequisite_ids").toString())
+        TaskRow(it.getString("id"), it.getString("title"), it.nullable("date"), it.nullable("start_time"), it.nullable("end_time"), it.getBoolean("all_day"), it.getBoolean("completed"), it.nullable("project_id"), it.getString("task_type") == "project", it.getJSONArray("prerequisite_ids").toString(), it.nullable("category_id"))
       }
       val periods = rows("routine_period").groupBy { it.getString("routine_id") }
       val completions = rows("routine_completion").groupBy { it.getString("routine_id") }
@@ -128,7 +129,7 @@ data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow
       return CloudSnapshot(
         tasks.sortedWith(compareBy<TaskRow> { it.date }.thenByDescending { it.allDay }.thenBy { it.start }.thenBy { it.title.lowercase() }),
         projects.sortedBy { it.name.lowercase() }, routines.sortedBy { it.row.title.lowercase() },
-        settings?.getString("routine_reset_time")?.let(LocalTime::parse) ?: LocalTime.MIDNIGHT, json.getString("downloadedAt"), json.optInt("protocol"))
+        settings?.getString("routine_reset_time")?.let(LocalTime::parse) ?: LocalTime.MIDNIGHT, json.getString("downloadedAt"), json.optInt("protocol"), categories.sortedBy { it.name.lowercase() })
     }
   }
 }
@@ -146,7 +147,7 @@ class CloudReader(private val transport: CloudTransport) {
       return JSONObject(transport.request("/rest/v1/rpc/sync_snapshot", "POST", session.access, JSONObject()))
     } catch (failure: CloudFailure) { if (failure.status != 404) throw failure }
 
-    val tables = listOf("tasks", "projects", "routine", "routine_period", "routine_completion", "user_settings")
+    val tables = listOf("tasks", "projects", "category", "routine", "routine_period", "routine_completion", "user_settings")
     val data = JSONObject()
     for (table in tables) {
       val all = JSONArray()

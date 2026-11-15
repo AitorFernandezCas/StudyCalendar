@@ -51,13 +51,42 @@ class CollectionsStoreTest {
     }
     // Opening with Room executes the migration and validates all v2 tables
     // against the generated schema before any data can be read.
-    val database = Room.databaseBuilder(context, CalendarDatabase::class.java, name).addMigrations(CalendarDatabase.MIGRATION_1_2).build()
+    val database = Room.databaseBuilder(context, CalendarDatabase::class.java, name).addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3).build()
     try {
       assertEquals("Conservar", database.calendar().tasks().single().title)
+      assertNull(database.calendar().tasks().single().categoryId)
+      assertTrue(database.calendar().categories().isEmpty())
       assertEquals("old-operation", database.calendar().changes().single().operationId)
       LocalCalendar(database).saveProject(Project(name = "Nuevo"))
       assertEquals(2, database.calendar().changes().size)
     } finally { database.close(); context.deleteDatabase(name) }
+  }
+
+  @Test fun categoriesPersistAndDeletingOnePreservesTasks() = runBlocking {
+    val name = "category-persistence-test.db"
+    context.deleteDatabase(name)
+    var db = Room.databaseBuilder(context, CalendarDatabase::class.java, name).build()
+    try {
+      val store = LocalCalendar(db)
+      val category = Category(name = "Estudio", color = "#123456")
+      val task = Task(title = "Leer", date = today, categoryId = category.id)
+      store.saveCategory(category)
+      store.save(task)
+      var duplicateRejected = false
+      try { store.saveCategory(Category(name = " ESTUDIO ")) } catch (_: IllegalArgumentException) { duplicateRejected = true }
+      assertTrue(duplicateRejected)
+      db.close()
+      db = Room.databaseBuilder(context, CalendarDatabase::class.java, name).build()
+      assertEquals(category, db.calendar().categories().single().category())
+      assertEquals(category.id, db.calendar().tasks().single().task().categoryId)
+      val reopened = LocalCalendar(db)
+      reopened.complete(task.id)
+      assertEquals(category.id, db.calendar().tasks().single().categoryId)
+      reopened.deleteCategory(category.id)
+      assertTrue(db.calendar().categories().isEmpty())
+      assertNull(db.calendar().tasks().single().categoryId)
+      assertTrue(db.calendar().tasks().single().completed)
+    } finally { db.close(); context.deleteDatabase(name) }
   }
 
   @Test fun projectTransitionsPreserveTasksAndRejectDuplicateNamesAndNewInactiveAssignments() = runBlocking {
