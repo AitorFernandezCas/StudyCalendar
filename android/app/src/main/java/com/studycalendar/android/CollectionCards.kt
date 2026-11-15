@@ -89,4 +89,3 @@ fun DeleteConfirmation(title: String, message: String, busy: Boolean, dismiss: (
     confirmButton = { TextButton(enabled = !busy, onClick = confirm) { Text("Eliminar") } },
     dismissButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("Cancelar") } })
 }
-
