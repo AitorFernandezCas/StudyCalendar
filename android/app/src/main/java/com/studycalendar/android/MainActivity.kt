@@ -283,4 +283,3 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
       confirmButton = { TextButton(onClick = model::clearError) { Text("Aceptar") } })
   }
 }
-
