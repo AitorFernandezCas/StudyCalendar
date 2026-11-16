@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
@@ -50,7 +52,7 @@ private data class CalendarTarget(val date: LocalDate, val bounds: Rect, val vis
 internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categories: List<Category>, today: LocalDate,
   date: LocalDate, select: (LocalDate) -> Unit, owner: String, settings: CalendarSettings, busy: Boolean,
   saveSettings: (CalendarSettings) -> Unit, scrollOuter: suspend (Float) -> Unit, create: (LocalDate, Int?) -> Unit, edit: (Task) -> Unit,
-  complete: (Task) -> Unit, delete: (Task) -> Unit, move: (Task, Task, (Boolean) -> Unit) -> Unit, drag: CalendarDragController) {
+  complete: (Task) -> Unit, delete: (Task) -> Unit, move: (Task, Task, (Boolean) -> Unit) -> Unit, drag: CalendarDragController, availableHeight: Dp? = null) {
   val context = LocalContext.current
   val prefs = remember(owner) { context.getSharedPreferences("calendar-view-$owner", 0) }
   var view by rememberSaveable(owner) { mutableStateOf(prefs.getString("view", "Semana") ?: "Semana") }
@@ -206,23 +208,27 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
       val daily = filtered.filter { it.date == day }.sortedWith(compareByDescending<Task> { it.allDay }.thenBy { it.start }.thenBy { it.title })
       if (daily.isEmpty()) Text("No tienes tareas para este día.")
       daily.forEach { task -> TaskCard(task, projects.find { it.id == task.projectId }, categories.find { it.id == task.categoryId }, busy,
-        complete = { complete(task) }, edit = { edit(task) }, delete = { delete(task) }) }
+        complete = { complete(task) }, edit = { edit(task) }, delete = { delete(task) }, today = today, allTasks = tasks) }
     }
   }
+  BoxWithConstraints {
+  val dayWidth = (maxWidth - 48.dp).coerceAtLeast(180.dp)
+  val weekWidth = ((maxWidth - 48.dp) / 7).coerceAtLeast(180.dp)
+  val gridHeight = ((availableHeight ?: LocalConfiguration.current.screenHeightDp.dp) - 180.dp).coerceAtLeast(240.dp)
   Column(Modifier.onGloballyPositioned { rootViewport = it.boundsInWindow() }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       listOf("Día", "Semana", "Mes").forEach { value -> FilterChip(view == value, { view = value }, label = { Text(value) }) }
-      TextButton(onClick = { settingsForm = true }) { Text("Ajustes") }
+      IconButton(onClick = { settingsForm = true }) { Icon(appIcon("Configuración"), "Ajustes del calendario") }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      TextButton(onClick = { select(when(view) { "Mes" -> date.minusMonths(1); "Semana" -> date.minusWeeks(1); else -> date.minusDays(1) }) }) { Text("Anterior") }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+      IconButton(onClick = { select(when(view) { "Mes" -> date.minusMonths(1); "Semana" -> date.minusWeeks(1); else -> date.minusDays(1) }) }) { Icon(appIcon("Atrás"), "Anterior") }
+      TextButton(modifier = Modifier.weight(1f), onClick = { DatePickerDialog(context, { _, year, month, day -> select(LocalDate.of(year, month + 1, day)) }, date.year, date.monthValue - 1, date.dayOfMonth).show() }) {
+        Text(if (view == "Mes") date.format(DateTimeFormatter.ofPattern("MMMM yyyy", spanish)) else date.label(), maxLines = 2)
+      }
       TextButton(onClick = { select(today) }) { Text("Hoy") }
-      TextButton(onClick = { select(when(view) { "Mes" -> date.plusMonths(1); "Semana" -> date.plusWeeks(1); else -> date.plusDays(1) }) }) { Text("Siguiente") }
+      IconButton(onClick = { select(when(view) { "Mes" -> date.plusMonths(1); "Semana" -> date.plusWeeks(1); else -> date.plusDays(1) }) }) { Icon(appIcon("Siguiente"), "Siguiente") }
     }
-    TextButton(onClick = { DatePickerDialog(context, { _, year, month, day -> select(LocalDate.of(year, month + 1, day)) }, date.year, date.monthValue - 1, date.dayOfMonth).show() }) {
-      Text(if (view == "Mes") date.format(DateTimeFormatter.ofPattern("MMMM yyyy", spanish)) else date.label())
-    }
-    Row {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       if (view != "Mes") TextButton(onClick = { agenda = !agenda }) { Text(if (agenda) "Mostrar horario" else "Mostrar agenda") }
       Box {
         TextButton(onClick = { categoryMenu = true }) { Text(if (category == "*") "Todas las categorías" else if (category == "-") "Sin categoría" else categories.find { it.id == category }?.name ?: "Todas") }
@@ -246,7 +252,7 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
               Text(day.dayOfMonth.toString(), color = if (day == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelMedium)
               val daily = filtered.filter { it.date == day }
               daily.take(2).forEach { chip(it, Modifier.fillMaxWidth().height(32.dp)) }
-              if (daily.size > 2) TextButton(onClick = { openedDay = day }, contentPadding = PaddingValues(0.dp), modifier = Modifier.height(20.dp)) { Text("+${daily.size - 2}", style = MaterialTheme.typography.labelSmall) }
+              if (daily.size > 2) Text("+${daily.size - 2}", style = MaterialTheme.typography.labelSmall)
             }
           }
         }
@@ -255,9 +261,9 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
     else {
       val outside = filtered.filter { it.date in dates && !CalendarLayout.visible(it, settings) }
       if (outside.isNotEmpty()) TextButton(onClick = { agenda = true }) { Text("${outside.size} tareas fuera del horario · Ver agenda") }
-      val columnWidth = if (view == "Día") 260.dp else 180.dp
+      val columnWidth = if (view == "Día") dayWidth else weekWidth
       val allDayHeight = (48 + (dates.maxOfOrNull { day -> filtered.count { it.date == day && it.allDay } } ?: 0) * 44).coerceAtMost(140).dp
-      Column(Modifier.height(590.dp).onGloballyPositioned { viewport = it.boundsInWindow() }.border(1.dp, MaterialTheme.colorScheme.outline)) {
+      Column(Modifier.height(gridHeight).onGloballyPositioned { viewport = it.boundsInWindow() }.border(1.dp, MaterialTheme.colorScheme.outline)) {
         Row {
           Spacer(Modifier.width(48.dp))
           Row(Modifier.horizontalScroll(horizontal)) {
@@ -307,6 +313,7 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
       }
     }
   }
+  }
   openedDay?.let { day ->
     Dialog(onDismissRequest = { openedDay = null }) {
       Surface(shape = RoundedCornerShape(16.dp)) {
@@ -321,20 +328,20 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
 }
 
 @Composable
-private fun CalendarSettingsDialog(settings: CalendarSettings, busy: Boolean, dismiss: () -> Unit, save: (CalendarSettings) -> Unit) {
+internal fun CalendarSettingsDialog(settings: CalendarSettings, busy: Boolean, dismiss: () -> Unit, save: (CalendarSettings) -> Unit) {
   var start by remember { mutableStateOf(CalendarLayout.time(settings.start)) }
   var end by remember { mutableStateOf(CalendarLayout.time(settings.end)) }
   var sunday by remember { mutableStateOf(settings.sunday) }
   var error by remember { mutableStateOf<String?>(null) }
-  AlertDialog(onDismissRequest = dismiss, title = { Text("Ajustes del calendario") }, text = {
-    Column {
-      OutlinedTextField(start, { start = it }, label = { Text("Inicio · HH:MM") }, singleLine = true)
-      OutlinedTextField(end, { end = it }, label = { Text("Fin · HH:MM (hasta 24:00)") }, singleLine = true)
-      TextButton(onClick = { sunday = !sunday }) { Text("La semana empieza el ${if (sunday) "domingo" else "lunes"}") }
+  AlertDialog(onDismissRequest = { if (!busy) dismiss() }, title = { Text("Ajustes del calendario") }, text = {
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedTextField(start, { start = it }, enabled = !busy, label = { Text("Inicio · HH:MM") }, singleLine = true)
+      OutlinedTextField(end, { end = it }, enabled = !busy, label = { Text("Fin · HH:MM (hasta 24:00)") }, singleLine = true)
+      TextButton(enabled = !busy, onClick = { sunday = !sunday }) { Text("La semana empieza el ${if (sunday) "domingo" else "lunes"}") }
       error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
   }, confirmButton = { TextButton(enabled = !busy, onClick = {
     try { save(CalendarSettings(CalendarLayout.parse(start), CalendarLayout.parse(end), sunday)) }
     catch (failure: IllegalArgumentException) { error = failure.message }
-  }) { Text("Guardar") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancelar") } })
+  }) { Text("Guardar") } }, dismissButton = { TextButton(enabled = !busy, onClick = dismiss) { Text("Cancelar") } })
 }

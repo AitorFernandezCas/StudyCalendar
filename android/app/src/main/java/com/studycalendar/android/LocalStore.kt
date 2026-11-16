@@ -147,6 +147,18 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
     save(task.copy(completed = !task.completed))
   }
 
+  override suspend fun setCompletion(id: String, expected: Boolean, completed: Boolean) = database.withTransaction {
+    val task = requireNotNull(database.calendar().tasks().find { it.id == id }) { "La tarea ya no está disponible." }.task()
+    require(task.completed == expected) { "La tarea ha cambiado. Revisa su estado antes de continuar." }
+    save(task.copy(completed = completed))
+  }
+
+  override suspend fun setRoutineCompletion(id: String, date: LocalDate, expected: Boolean, completed: Boolean) = database.withTransaction {
+    val record = requireNotNull(database.calendar().routines().find { it.row.id == id }) { "La rutina ya no está disponible." }
+    require((date in record.completedDates()) == expected) { "La rutina ha cambiado. Revisa su estado antes de continuar." }
+    completeRoutine(id, date, completed)
+  }
+
   override suspend fun delete(id: String) = database.withTransaction {
     val rows = database.calendar().tasks()
     Planning.delete(id, rows.map(TaskRow::task))

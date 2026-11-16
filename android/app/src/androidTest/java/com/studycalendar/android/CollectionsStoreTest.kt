@@ -22,6 +22,44 @@ class CollectionsStoreTest {
     override fun instant(): Instant = now
   }
 
+  @Test fun guardedUndoPreservesEditsAndRejectsStaleStateAndDependencies() = runBlocking {
+    val database = Room.inMemoryDatabaseBuilder(context, CalendarDatabase::class.java).build()
+    try {
+      val store = LocalCalendar(database)
+      val project = Project(name = "Proyecto de prueba")
+      store.saveProject(project)
+      val task = Task(title = "Original", date = today, projectTask = true, projectId = project.id)
+      store.save(task)
+      store.setCompletion(task.id, false, true)
+      store.save(task.copy(title = "Nombre nuevo", completed = true))
+      store.setCompletion(task.id, true, false)
+      assertEquals("Nombre nuevo", database.calendar().tasks().single().title)
+      assertFalse(database.calendar().tasks().single().completed)
+      try { store.setCompletion(task.id, true, false); fail("Stale undo must fail") } catch (_: IllegalArgumentException) { }
+      store.setCompletion(task.id, false, true)
+      val dependent = Task(title = "Depende", date = today, projectTask = true, projectId = project.id, prerequisiteIds = setOf(task.id), completed = true)
+      store.save(dependent)
+      try { store.setCompletion(task.id, true, false); fail("Completed dependents must prevent undo") } catch (_: IllegalArgumentException) { }
+      assertTrue(database.calendar().tasks().first { it.id == task.id }.completed)
+    } finally { database.close() }
+  }
+
+  @Test fun habitUndoChecksExpectedStateAndOriginalDay() = runBlocking {
+    val database = Room.inMemoryDatabaseBuilder(context, CalendarDatabase::class.java).build()
+    val clock = MutableClock(Instant.parse("2026-11-13T12:00:00Z"))
+    try {
+      val store = LocalCalendar(database, clock)
+      store.saveRoutine("habit", "Leer", "#7056ED", true, today)
+      store.setRoutineCompletion("habit", today, false, true)
+      store.setRoutineCompletion("habit", today, true, false)
+      try { store.setRoutineCompletion("habit", today, true, false); fail("Stale undo") } catch (_: IllegalArgumentException) { }
+      store.setRoutineCompletion("habit", today, false, true)
+      clock.now = clock.now.plusSeconds(86400)
+      try { store.setRoutineCompletion("habit", today, true, false); fail("Yesterday undo") } catch (_: IllegalArgumentException) { }
+      assertTrue(today in database.calendar().routines().single().completedDates())
+    } finally { database.close() }
+  }
+
   @Test fun migrationPreservesExistingTasksAndJournal() = runBlocking {
     val name = "collections-migration-test.db"
     context.deleteDatabase(name)

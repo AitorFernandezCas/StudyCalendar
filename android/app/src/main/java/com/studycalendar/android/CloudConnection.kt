@@ -139,6 +139,7 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
   }
   override suspend fun save(task: Task) = edit { save(task) }
   override suspend fun complete(id: String) = edit { complete(id) }
+  override suspend fun setCompletion(id: String, expected: Boolean, completed: Boolean) = edit { setCompletion(id, expected, completed) }
   override suspend fun delete(id: String) = edit { delete(id) }
   override suspend fun saveCategory(category: Category) = edit { saveCategory(category) }
   override suspend fun deleteCategory(id: String) = edit { deleteCategory(id) }
@@ -146,5 +147,6 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
   override suspend fun deleteProject(id: String) = edit { deleteProject(id) }
   override suspend fun saveRoutine(id: String, title: String, color: String, active: Boolean, startsOn: LocalDate) = edit { saveRoutine(id, title, color, active, startsOn, Instant.now()) }
   override suspend fun completeRoutine(id: String, date: LocalDate, completed: Boolean) = edit { completeRoutine(id, date, completed, Instant.now()) }
+  override suspend fun setRoutineCompletion(id: String, date: LocalDate, expected: Boolean, completed: Boolean) = edit { setRoutineCompletion(id, date, expected, completed, Instant.now()) }
   override suspend fun deleteRoutine(id: String) = edit { deleteRoutine(id) }
 }

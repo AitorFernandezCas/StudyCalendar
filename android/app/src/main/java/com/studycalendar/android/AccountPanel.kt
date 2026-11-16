@@ -10,13 +10,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun AccountPanel(state: CloudState, pending: Int?, login: (String, String) -> Unit, refresh: () -> Unit, logout: () -> Unit, resolve: (String, Set<String>?) -> Unit) {
+fun AccountPanel(state: CloudState, pending: Int?, login: (String, String) -> Unit, refresh: () -> Unit, logout: () -> Unit, resolve: (String, Set<String>?) -> Unit, initiallyExpanded: Boolean = false) {
   var email by remember(state.session?.email) { mutableStateOf(state.session?.email ?: "") }
   var password by remember { mutableStateOf("") }
   var showLogin by remember { mutableStateOf(false) }
   var showConflict by remember { mutableStateOf(false) }
   var confirmLogout by remember { mutableStateOf(false) }
-  var expanded by remember { mutableStateOf(false) }
+  var expanded by remember { mutableStateOf(initiallyExpanded) }
   OutlinedCard(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -28,9 +28,9 @@ fun AccountPanel(state: CloudState, pending: Int?, login: (String, String) -> Un
       }
       if (expanded) {
       if (state.session == null) {
-        Text("Conecta tu cuenta para consultar las tareas, proyectos y rutinas de la web. Tus datos de prueba se conservarán por separado.")
+        Text("Conecta tu cuenta para consultar las tareas, proyectos y rutinas de la web. Tus datos locales se conservarán por separado.")
         Text("Cambios locales guardados: ${pending ?: "…"}", style = MaterialTheme.typography.labelMedium)
-        TextButton(enabled = !state.working, onClick = { showLogin = !showLogin }) { Text("Conectar con Supabase") }
+        TextButton(enabled = !state.working, onClick = { showLogin = !showLogin }) { Text("Conectar cuenta") }
       } else {
         Text(if (state.snapshot?.protocol == 1) "Cuenta conectada · cambios guardados sin conexión" else "Cuenta conectada · consulta y copia sin conexión")
         if (state.snapshot?.protocol != 1) Text("El servidor todavía no tiene el contrato de escritura disponible. Los datos de la cuenta se muestran para consulta.")
