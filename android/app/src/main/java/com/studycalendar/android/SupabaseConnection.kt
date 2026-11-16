@@ -107,7 +107,7 @@ class SessionVault(context: Context) {
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObject(it) }
 fun JSONObject.nullable(name: String): String? = if (isNull(name)) null else getString(name)
 
-data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow>, val routines: List<RoutineRecord>, val reset: LocalTime, val downloadedAt: String, val protocol: Int = 0, val categories: List<CategoryRow> = emptyList()) {
+data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow>, val routines: List<RoutineRecord>, val reset: LocalTime, val downloadedAt: String, val protocol: Int = 0, val categories: List<CategoryRow> = emptyList(), val calendar: com.studycalendar.core.CalendarSettings = com.studycalendar.core.CalendarSettings()) {
   companion object {
     fun parse(json: JSONObject, user: String): CloudSnapshot {
       require(json.getString("owner") == user) { "La copia pertenece a otra cuenta." }
@@ -129,7 +129,9 @@ data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow
       return CloudSnapshot(
         tasks.sortedWith(compareBy<TaskRow> { it.date }.thenByDescending { it.allDay }.thenBy { it.start }.thenBy { it.title.lowercase() }),
         projects.sortedBy { it.name.lowercase() }, routines.sortedBy { it.row.title.lowercase() },
-        settings?.getString("routine_reset_time")?.let(LocalTime::parse) ?: LocalTime.MIDNIGHT, json.getString("downloadedAt"), json.optInt("protocol"), categories.sortedBy { it.name.lowercase() })
+        settings?.getString("routine_reset_time")?.let(LocalTime::parse) ?: LocalTime.MIDNIGHT, json.getString("downloadedAt"), json.optInt("protocol"), categories.sortedBy { it.name.lowercase() }, com.studycalendar.core.CalendarSettings(
+          com.studycalendar.core.CalendarLayout.parse(settings?.optString("calendar_start_time", "00:00")?.take(5) ?: "00:00"),
+          com.studycalendar.core.CalendarLayout.parse(settings?.optString("calendar_end_time", "24:00")?.take(5) ?: "24:00"), settings?.optString("week_start") == "sunday"))
     }
   }
 }

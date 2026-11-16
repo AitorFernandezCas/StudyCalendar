@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -37,6 +39,16 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
   val cloud = connection.state
   val readOnly get() = cloud.value.session != null && cloud.value.snapshot?.protocol != 1
   val tasks = combine(store.tasks, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.tasks.orEmpty() }
+  private val preferences = application.getSharedPreferences("calendar-local", android.content.Context.MODE_PRIVATE)
+  var localSettings by mutableStateOf(CalendarSettings(preferences.getInt("start", 0), preferences.getInt("end", 1440), preferences.getBoolean("sunday", false)))
+    private set
+  fun settings(value: CalendarSettings) {
+    if (cloud.value.session != null) execute { connection.saveSettings(value) }
+    else viewModelScope.launch {
+      val saved = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { preferences.edit().putInt("start", value.start).putInt("end", value.end).putBoolean("sunday", value.sunday).commit() }
+      if (saved) localSettings = value else error = "No se pudieron guardar los ajustes."
+    }
+  }
   val pending = store.pending
   val categories = combine(store.categories, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.categories.orEmpty() }
   val projects = combine(store.projects, cloud) { local, remote -> if (remote.session == null) local else remote.snapshot?.projects.orEmpty() }
@@ -59,9 +71,9 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
   var busy by mutableStateOf(false)
     private set
   fun clearError() { error = null }
-  fun execute(onSuccess: () -> Unit = {}, action: suspend CalendarCommands.() -> Unit) {
-    if (readOnly) { error = "El servidor todavía no tiene disponible el contrato de sincronización. Tu copia sigue disponible para consulta."; return }
-    if (busy) return
+  fun execute(onSuccess: () -> Unit = {}, onFailure: () -> Unit = {}, action: suspend CalendarCommands.() -> Unit) {
+    if (readOnly) { error = "El servidor todavía no tiene disponible el contrato de sincronización. Tu copia sigue disponible para consulta."; onFailure(); return }
+    if (busy) { onFailure(); return }
     busy = true
     viewModelScope.launch {
       try {
@@ -69,7 +81,8 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
         commands.action(); onSuccess()
         if (cloud.value.session != null) SyncScheduling.enqueue(getApplication())
       } catch (failure: Exception) {
-        if (failure is kotlinx.coroutines.CancellationException) throw failure
+        if (failure is kotlinx.coroutines.CancellationException) { onFailure(); throw failure }
+        onFailure()
         error = if (failure is IllegalArgumentException) failure.message else "No se pudo guardar. Inténtalo de nuevo."
       } finally { busy = false }
     }
@@ -112,6 +125,8 @@ private fun habitToday(reset: java.time.LocalTime): LocalDate {
 
 @Composable
 private fun CalendarApp(model: CalendarViewModel = viewModel()) {
+  val calendarDrag = remember { CalendarDragController() }
+  val calendarList = rememberLazyListState()
   val rows by model.tasks.collectAsStateWithLifecycle(initialValue = null)
   val categoryRows by model.categories.collectAsStateWithLifecycle(initialValue = null)
   val projectRows by model.projects.collectAsStateWithLifecycle(initialValue = null)
@@ -126,6 +141,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
   var selectedProject by rememberSaveable { mutableStateOf<String?>(null) }
   var editingTask by remember { mutableStateOf<Task?>(null) }
   var deletingTask by remember { mutableStateOf<Task?>(null) }
+  var taskSeed by remember { mutableStateOf<Task?>(null) }
   var taskForm by remember { mutableStateOf(false) }
   var taskProject by remember { mutableStateOf<Project?>(null) }
   var editingCategory by remember { mutableStateOf<Category?>(null) }
@@ -142,7 +158,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
   val categories = categoryRows.orEmpty().map(CategoryRow::category)
   val project = projects.find { it.id == selectedProject }
   val loaded = rows != null && categoryRows != null && projectRows != null && routines != null && (cloud.session == null || cloud.snapshot != null)
-  val editTask: (Task) -> Unit = { editingTask = it; taskProject = null; taskForm = true }
+  val editTask: (Task) -> Unit = { taskSeed = null; editingTask = it; taskProject = null; taskForm = true }
   BackHandler(screen == "Proyectos" && selectedProject != null) { selectedProject = null }
 
   Scaffold(topBar = {
@@ -172,13 +188,14 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
           "Categorías" -> { editingCategory = null; categoryForm = true }
           "Rutinas" -> { editingRoutine = null; routineForm = true }
           "Proyectos" -> if (project == null) { editingProject = null; projectForm = true }
-            else { editingTask = null; taskProject = project; taskForm = true }
-          else -> { editingTask = null; taskProject = null; taskForm = true }
+            else { editingTask = null; taskSeed = null; taskProject = project; taskForm = true }
+          else -> { editingTask = null; taskSeed = null; taskProject = null; taskForm = true }
         }
       }) { Text(when { screen == "Categorías" -> "Nueva categoría"; screen == "Rutinas" -> "Nueva rutina"; screen == "Proyectos" && project == null -> "Nuevo proyecto"; else -> "Nueva tarea" }) }
     }
   }) { padding ->
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
+    Box(Modifier.fillMaxSize().padding(padding)) {
+    LazyColumn(state = calendarList, modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 100.dp, top = 24.dp)) {
       item {
         Text("StudyCalendar", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -191,20 +208,17 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
       else when (screen) {
         "Agenda" -> {
           item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-              TextButton(onClick = { selectedDate = date.minusDays(1).toString() }) { Text("Anterior") }
-              TextButton(onClick = { selectedDate = null }) { Text("Hoy") }
-              TextButton(onClick = { selectedDate = date.plusDays(1).toString() }) { Text("Siguiente") }
-            }
-            Text(date.format(DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Locale.forLanguageTag("es"))), style = MaterialTheme.typography.titleLarge)
-          }
-          val daily = tasks.filter { it.date == date }
-          if (daily.isEmpty()) item { Text("No tienes tareas para este día.") }
-          items(daily, key = { it.id }) { task ->
-            TaskCard(task, projects.find { it.id == task.projectId }, categories.find { it.id == task.categoryId }, (model.busy || model.readOnly),
-              complete = { model.execute { complete(task.id) } }, edit = { editTask(task) }, delete = { deletingTask = task })
+            CalendarScreen(tasks, projects, categories, today, date, { selectedDate = it.toString() },
+              cloud.session?.userId ?: "local", cloud.snapshot?.calendar ?: model.localSettings,
+              model.busy || model.readOnly, model::settings, scrollOuter = { amount -> calendarList.scrollBy(amount) },
+              create = { day, minute ->
+                taskSeed = CalendarLayout.draft(day, minute)
+                editingTask = null; taskProject = null; taskForm = true
+              }, edit = editTask, complete = { task -> model.execute { complete(task.id) } },
+              delete = { deletingTask = it }, move = { before, after, result -> model.execute(onSuccess = { result(true) }, onFailure = { result(false) }) { reschedule(before, after) } }, drag = calendarDrag)
           }
         }
+
         "Proyectos" -> {
           if (project != null) {
             item {
@@ -274,9 +288,11 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
         }
       }
     }
+    CalendarDragOverlay(calendarDrag)
+    }
   }
   if (taskForm) TaskForm(editingTask, today, taskProject, projects, categories, tasks, model,
-    dismiss = { taskForm = false }, save = { task -> model.execute(onSuccess = { taskForm = false }) { save(task) } })
+    seed = taskSeed, dismiss = { taskForm = false }, save = { task -> model.execute(onSuccess = { taskForm = false }) { save(task) } })
   if (categoryForm) CategoryForm(editingCategory, categories, (model.busy || model.readOnly), dismiss = { categoryForm = false }, save = { value ->
     model.execute(onSuccess = { categoryForm = false }) { saveCategory(value) }
   })

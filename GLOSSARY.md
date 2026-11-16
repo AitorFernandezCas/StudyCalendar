@@ -22,6 +22,14 @@ A pending task with at least one unfinished prerequisite. It can be edited and s
 A project task with no assigned calendar date, whether or not it has been completed. It may belong to a project or be unassigned.
 _Avoid_: All-day task, overdue task
 
+**All-day task (tarea de todo el día)**:
+A task assigned to a calendar date without a specific time slot on that date. It remains dated work, unlike an unscheduled task.
+_Avoid_: Unscheduled task, daily habit
+
+**Timed task (tarea con hora)**:
+A task assigned a start and end time on the same calendar date. Its duration is the interval between those times.
+_Avoid_: Reminder time
+
 **Reminder (recordatorio)**:
 An optional notice associated with a task or daily habit, omitted when the corresponding task or day's habit is already complete. A habit's reminder time is independent of the habit itself and does not make it a scheduled calendar task.
 _Avoid_: Habit schedule, calendar habit

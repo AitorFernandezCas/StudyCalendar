@@ -131,6 +131,12 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
     persist(next)
   }
   suspend fun resolve(id: String, keepLocalFields: Set<String>?) = edit { resolve(id, keepLocalFields) }
+  suspend fun saveSettings(settings: com.studycalendar.core.CalendarSettings) = edit { saveSettings(settings) }
+  override suspend fun reschedule(before: Task, after: Task) = edit {
+    val current = requireNotNull(snapshot().tasks.find { it.id == before.id }) { "La tarea ya no está disponible." }.task()
+    require(current == before) { "La tarea ha cambiado. Revisa su horario antes de moverla." }
+    save(current.copy(date = after.date, start = after.start, end = after.end, allDay = after.allDay))
+  }
   override suspend fun save(task: Task) = edit { save(task) }
   override suspend fun complete(id: String) = edit { complete(id) }
   override suspend fun delete(id: String) = edit { delete(id) }

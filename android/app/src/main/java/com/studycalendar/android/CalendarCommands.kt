@@ -7,6 +7,7 @@ import java.time.LocalDate
 
 interface CalendarCommands {
   suspend fun save(task: Task)
+  suspend fun reschedule(before: Task, after: Task)
   suspend fun complete(id: String)
   suspend fun delete(id: String)
   suspend fun saveCategory(category: Category)

@@ -122,3 +122,42 @@ Verificación del 2026-11-14:
 - PostgREST real con JWT de prueba: lectura/escritura autenticadas, recuperación de recibo HTTP, separación de usuarios, rechazo anónimo y bloqueo de CRUD antiguo correctos.
 
 Las pruebas instrumentadas usan transportes simulados y bases privadas de pruebas; las de PostgreSQL/PostgREST usan contenedores desechables. Además, el contrato ya está activo y el usuario confirmó el 2026-11-14 que su tarea desechable creada desde el Poco aparece en la web. Queda verificado móvil→Supabase→web con sesión real. También confirmó que la edición del título en la web llega al Poco al actualizar: quedan verificadas ambas direcciones con sesión real. Los conflictos siguen verificados mediante las pruebas aisladas descritas arriba.
+
+
+## Calendario · 0.5.0
+
+Diseño aprobado en [la ampliación de calendario](../docs/android-calendar-planning.md), Q12 del 2026-11-16.
+
+La sección Calendario incorpora Día, Semana y Mes, con alternativa Agenda para día/semana. Empieza en la semana horaria y recuerda la vista y el filtro por cuenta en el teléfono. Mantiene Anterior/Hoy/Siguiente y añade selector directo de fecha. La semana se desplaza horizontalmente; las tareas simultáneas tienen columnas propias y las de todo el día se apilan. El mes muestra títulos abreviados y abre la agenda completa de cada día.
+
+Mantener pulsada una tarjeta permite moverla; la previsualización indica la fecha y horario que se guardarán al soltar. El arrastre ajusta a quince minutos, conserva duración y permite pasar entre horario y todo el día; en mes solo cambia la fecha. Volver cancela el movimiento. El guardado ofrece «Deshacer», sujeto a que la tarea no haya cambiado desde el movimiento. Las horas permanecen dentro de una fecha y los límites del día se ajustan conservando duración. Tocar una tarjeta abre el formulario con su título completo y todas las acciones disponibles.
+
+Crear desde una celda conserva su fecha/hora y desde una banda de todo el día conserva su fecha. El botón general sigue proponiendo hoy. Las agendas incluyen también tareas fuera del horario visible y la cuadrícula ofrece un acceso explícito a ellas. Se mantienen completadas y tareas de proyectos inactivos/completados; hábitos y tareas sin fecha no aparecen.
+
+Ajustes permite editar inicio/fin del horario y lunes/domingo. Con cuenta, se guardan offline en la cola existente y se comparten con la web; el modo local mantiene sus ajustes propios. El primer guardado sin fila remota usa los valores predeterminados del protocolo como base de comparación. Editar estos campos conserva el reinicio de hábitos. No requiere migración de Supabase, despliegue web/backend ni cambios en datos compartidos para su instalación.
+
+Verificación del 2026-11-16:
+
+- 23 pruebas JVM correctas, incluidas siete nuevas de calendario: límites de semana/mes/año, creación al final del día, duración y conversiones, rango visible, solapamientos y validación de ajustes.
+- 23 pruebas instrumentadas correctas en el POCO X7 Pro (Android 16). Las tres nuevas verifican preferencias sin fila previa y reapertura de la cola, conservación del reinicio de hábitos y resolución de conflictos, y rechazo de deshacer sobre tareas modificadas o eliminadas. Usan bases desechables y transporte simulado.
+- Compilación final de la aplicación y del APK instrumentado correcta; lint final sin errores. El APK final se instaló como actualización y se repitieron las 23 pruebas instrumentadas correctamente.
+- Actualización instalada conservando la firma debug anterior y los datos. La app arrancó con la cuenta existente; la jerarquía de accesibilidad confirmó Calendario, Día, Semana, Mes, Ajustes y Mostrar agenda. Se revisó la captura inicial y se redujo la banda vacía de todo el día.
+- Queda pendiente la comprobación interactiva completa de gestos, desplazamiento, agendas anidadas, TalkBack y sincronización de ajustes entre web y móvil con cuenta real. No se han modificado datos de cuenta para simular estas comprobaciones. La presencia de controles y las pruebas de persistencia no sustituyen esa revisión.
+
+Para repetir los checks en entornos donde el daemon Kotlin no puede escribir en su caché de usuario, pasar `'-Pkotlin.compiler.execution.strategy=in-process'` a Gradle. Conservar la clave debug existente al instalar actualizaciones; cambiar `ANDROID_USER_HOME` puede generar otra clave e impedir instalar con `-r`. El APK firmado con la clave previa de este equipo se entrega como `app/build/outputs/apk/debug/studycalendar-0.5.0-debug.apk`.
+
+
+## Arrastre continuo · 0.5.1
+
+La tarjeta se eleva al mantener pulsado y sigue el dedo conservando el punto de agarre. Una capa por encima del calendario permite cruzar columnas sin recortar la tarjeta; su posición se actualiza mediante transformaciones gráficas. El origen queda atenuado y el destino se resalta, con el horario propuesto en una etiqueta flotante que no desplaza el calendario.
+
+Al soltar, la tarjeta espera el resultado del guardado local y aterriza con una transición de 150 ms, respetando los ajustes de animación del sistema. Un destino inválido o una cancelación no escribe datos. Los errores de guardado devuelven la tarjeta al origen disponible, o la desvanecen si ese estado ya no existe. La operación y «Deshacer» conservan la validación y sincronización existentes. El desplazamiento en bordes usa el reloj de fotogramas y una velocidad proporcional a la proximidad del dedo.
+
+Verificación del 2026-11-16:
+
+- Compilación final de la aplicación y APK instrumentado correcta; lint sin errores.
+- 23 pruebas JVM correctas (sin cambios de dominio en esta versión).
+- `OK (31 tests)` en el POCO X7 Pro con Android 16: incluye ocho pruebas Compose nuevas de seguimiento del dedo, desplazamiento de los límites renderizados de la tarjeta, cancelación sin escritura, cambio de día con una sola escritura, error de guardado, destino inválido, conservación del horario y duración, conversiones y desplazamiento en bordes. Las pruebas usan tareas y preferencias desechables, separadas de la cuenta y de `local-preview.db`.
+- APK final 0.5.1 instalado como actualización con la firma debug existente; conserva los datos. Archivo local: `app/build/outputs/apk/debug/studycalendar-0.5.1-debug.apk`.
+
+Las pruebas de gestos se ejecutan con `:app:connectedDebugAndroidTest` o con el runner de instrumentación tras instalar los APK de aplicación y pruebas con la misma firma. Las nuevas dependencias de pruebas Compose usan el BOM ya fijado; la actividad de pruebas se incorpora únicamente a la variante debug.

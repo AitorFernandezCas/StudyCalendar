@@ -124,18 +124,18 @@ fun RoutineForm(existing: Routine?, today: LocalDate, busy: Boolean, dismiss: ()
 }
 
 @Composable
-fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, projects: List<Project>, categories: List<Category>, tasks: List<Task>, model: CalendarViewModel, dismiss: () -> Unit, save: (Task) -> Unit) {
+fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, projects: List<Project>, categories: List<Category>, tasks: List<Task>, model: CalendarViewModel, seed: Task? = null, dismiss: () -> Unit, save: (Task) -> Unit) {
   val id = rememberSaveable { existing?.id ?: UUID.randomUUID().toString() }
   var title by rememberSaveable { mutableStateOf(existing?.title ?: "") }
-  var day by rememberSaveable { mutableStateOf((existing?.date ?: date).toString()) }
+  var day by rememberSaveable { mutableStateOf((existing?.date ?: seed?.date ?: date).toString()) }
   var projectTask by rememberSaveable { mutableStateOf(existing?.projectTask ?: (initialProject != null)) }
   var categoryId by rememberSaveable { mutableStateOf(existing?.categoryId) }
   var categoryMenu by remember { mutableStateOf(false) }
   var projectId by rememberSaveable { mutableStateOf(existing?.projectId ?: initialProject?.id) }
   var undated by rememberSaveable { mutableStateOf(existing?.let { it.date == null } ?: (initialProject != null)) }
-  var allDay by rememberSaveable { mutableStateOf(existing?.allDay ?: true) }
-  var start by rememberSaveable { mutableStateOf(existing?.start?.toString() ?: "09:00") }
-  var end by rememberSaveable { mutableStateOf(existing?.end?.toString() ?: "10:00") }
+  var allDay by rememberSaveable { mutableStateOf(existing?.allDay ?: seed?.allDay ?: true) }
+  var start by rememberSaveable { mutableStateOf(existing?.start?.toString() ?: seed?.start?.toString() ?: "09:00") }
+  var end by rememberSaveable { mutableStateOf(existing?.end?.toString() ?: seed?.end?.toString() ?: "10:00") }
   var prerequisiteIds by remember { mutableStateOf(existing?.prerequisiteIds ?: emptySet()) }
   var error by remember { mutableStateOf<String?>(null) }
   var projectMenu by remember { mutableStateOf(false) }
