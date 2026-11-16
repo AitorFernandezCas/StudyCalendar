@@ -7,6 +7,8 @@ Ampliación solicitada el 2026-11-13: incorporar rutinas y proyectos a la vista 
 
 ## Decisiones confirmadas
 
+Ampliación de calendario del 2026-11-16: el usuario ha confirmado vistas día/semana/mes, agenda alternativa, creación contextual, arrastre y ajustes de calendario compartidos. [El diseño de calendario](android-calendar-planning.md) recoge Q1–Q11 y la propuesta consolidada aprobada en Q12. Esta ampliación retoma el trabajo aplazado en el alcance inicial descrito a continuación; Q12 autoriza comenzar la implementación y el avance se registra en `android/README.md`.
+
 - Aplicación nativa Android en Kotlin, inicialmente para uso personal.
 - Convivirá con la web y utilizará la misma cuenta, tareas, proyectos y hábitos.
 - La primera versión se centra en consultar la agenda, crear y completar tareas y marcar hábitos.

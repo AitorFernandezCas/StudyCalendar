@@ -120,6 +120,11 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
   val categories = database.calendar().observeCategories()
   val routines = database.calendar().observeRoutines()
 
+  override suspend fun reschedule(before: Task, after: Task) = database.withTransaction {
+    val current = requireNotNull(database.calendar().tasks().find { it.id == before.id }) { "La tarea ya no está disponible." }.task()
+    require(current == before) { "La tarea ha cambiado. Revisa su horario antes de moverla." }
+    save(current.copy(date = after.date, start = after.start, end = after.end, allDay = after.allDay))
+  }
   override suspend fun save(task: Task) = database.withTransaction {
     val rows = database.calendar().tasks()
     task.projectId?.let { id ->

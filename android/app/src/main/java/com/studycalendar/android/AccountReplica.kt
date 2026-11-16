@@ -59,7 +59,7 @@ class AccountReplica(val document: JSONObject) {
 
   private fun enqueue(table: String, id: String, action: String, desired: JSONObject = JSONObject(), context: JSONObject = JSONObject()) {
     require(remote.optInt("protocol") == 1) { "El servidor todavía no permite sincronizar cambios." }
-    val before = find(render(), table, id)
+    val before = find(render(), table, id) ?: if (table == "user_settings") JSONObject().put("user_id", owner).put("routine_reset_time", "00:00").put("calendar_start_time", "00:00").put("calendar_end_time", "24:00").put("week_start", "monday") else null
     val beforeState = before?.let(::normalized)
     val changes = JSONObject()
     desired.keys().forEach { key -> if (action == "create" || beforeState == null || !sameJson(beforeState.opt(key), desired.opt(key))) changes.put(key, desired.get(key)) }
@@ -99,6 +99,9 @@ class AccountReplica(val document: JSONObject) {
   fun delete(id: String) {
     Planning.delete(id, snapshot().tasks.map(TaskRow::task))
     enqueue("tasks", id, "delete")
+  }
+  fun saveSettings(settings: CalendarSettings) {
+    enqueue("user_settings", owner, "update", JSONObject().put("calendar_start_time", CalendarLayout.time(settings.start)).put("calendar_end_time", CalendarLayout.time(settings.end)).put("week_start", if (settings.sunday) "sunday" else "monday"))
   }
   fun saveCategory(category: Category) {
     category.validate(snapshot().categories.map(CategoryRow::category))

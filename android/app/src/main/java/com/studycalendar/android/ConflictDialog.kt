@@ -9,7 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
-private val fieldLabels = mapOf("title" to "Título", "name" to "Nombre", "date" to "Fecha", "start_time" to "Inicio", "end_time" to "Fin", "all_day" to "Todo el día", "completed" to "Completada", "active" to "Activa", "status" to "Estado", "color" to "Color", "project_id" to "Proyecto", "category_id" to "Categoría", "prerequisite_ids" to "Tareas previas", "delete" to "Eliminación")
+private val fieldLabels = mapOf("title" to "Título", "name" to "Nombre", "date" to "Fecha", "start_time" to "Inicio", "end_time" to "Fin", "all_day" to "Todo el día", "completed" to "Completada", "active" to "Activa", "status" to "Estado", "color" to "Color", "project_id" to "Proyecto", "category_id" to "Categoría", "prerequisite_ids" to "Tareas previas", "delete" to "Eliminación", "calendar_start_time" to "Inicio del horario visible", "calendar_end_time" to "Fin del horario visible", "week_start" to "Primer día de semana")
 
 @Composable
 fun ConflictDialog(entry: JSONObject, dismiss: () -> Unit, resolve: (String, Set<String>?) -> Unit) {
@@ -23,6 +23,8 @@ fun ConflictDialog(entry: JSONObject, dismiss: () -> Unit, resolve: (String, Set
     null, JSONObject.NULL -> "Sin valor"
     true -> "Sí"
     false -> "No"
+    "monday" -> "Lunes"
+    "sunday" -> "Domingo"
     else -> v.toString()
   }
   AlertDialog(onDismissRequest = dismiss, title = { Text("Revisar cambio pendiente") }, text = {
