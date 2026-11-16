@@ -96,6 +96,18 @@ class AccountReplica(val document: JSONObject) {
     val task = requireNotNull(snapshot().tasks.find { it.id == id }) { "La tarea ya no está disponible." }.task()
     save(task.copy(completed = !task.completed))
   }
+
+  fun setCompletion(id: String, expected: Boolean, completed: Boolean) {
+    val task = requireNotNull(snapshot().tasks.find { it.id == id }) { "La tarea ya no está disponible." }.task()
+    require(task.completed == expected) { "La tarea ha cambiado. Revisa su estado antes de continuar." }
+    save(task.copy(completed = completed))
+  }
+
+  fun setRoutineCompletion(id: String, date: LocalDate, expected: Boolean, completed: Boolean, now: Instant) {
+    val record = requireNotNull(snapshot().routines.find { it.row.id == id }) { "La rutina ya no está disponible." }
+    require((date in record.completedDates()) == expected) { "La rutina ha cambiado. Revisa su estado antes de continuar." }
+    completeRoutine(id, date, completed, now)
+  }
   fun delete(id: String) {
     Planning.delete(id, snapshot().tasks.map(TaskRow::task))
     enqueue("tasks", id, "delete")

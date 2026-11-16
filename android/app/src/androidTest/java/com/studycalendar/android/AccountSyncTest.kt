@@ -74,6 +74,41 @@ class AccountSyncTest {
     }
   }
 
+  @Test fun guardedCompletionSurvivesRestartAndPreservesLaterEdits() = runBlocking {
+    val server = Server()
+    val ctx = context("completion-undo")
+    val connection = CloudConnection(ctx, CloudReader(server))
+    connection.login("test", "password")
+    connection.setCompletion(taskId, false, true)
+    val changed = connection.state.value.snapshot!!.tasks.single().task().copy(title = "Título posterior")
+    connection.save(changed)
+    val restored = CloudConnection(ctx, CloudReader(server))
+    restored.restore()
+    restored.setCompletion(taskId, true, false)
+    assertEquals("Título posterior", restored.state.value.snapshot!!.tasks.single().title)
+    assertFalse(restored.state.value.snapshot!!.tasks.single().completed)
+    val pending = restored.state.value.pending
+    try { restored.setCompletion(taskId, true, false); fail("Stale completion should fail") } catch (_: IllegalArgumentException) { }
+    assertEquals(pending, restored.state.value.pending)
+    restored.refresh()
+    assertFalse(server.row!!.getBoolean("completed"))
+    assertEquals("Título posterior", server.row!!.getString("title"))
+  }
+
+  @Test fun accountHabitUndoChecksDayAndState() {
+    val replica = AccountReplica.load(Server().snapshot(), user)
+    val now = Instant.parse("2026-11-13T12:00:00Z")
+    val day = LocalDate.of(2026, 11, 13)
+    val id = "66666666-6666-4666-8666-666666666666"
+    replica.saveRoutine(id, "Leer", "#7056ED", true, day, now)
+    replica.setRoutineCompletion(id, day, false, true, now)
+    replica.setRoutineCompletion(id, day, true, false, now)
+    try { replica.setRoutineCompletion(id, day, true, false, now); fail("Stale habit") } catch (_: IllegalArgumentException) { }
+    replica.setRoutineCompletion(id, day, false, true, now)
+    try { replica.setRoutineCompletion(id, day, true, false, now.plusSeconds(86400)); fail("Old day") } catch (_: IllegalArgumentException) { }
+    assertTrue(day in replica.snapshot().routines.single().completedDates())
+  }
+
   @Test fun categoryOperationsPreserveAssignmentsAndRenderOfflineDeletion() {
     val server = Server()
     val category = Category(id = "99999999-9999-4999-8999-999999999999", name = "Estudio", color = "#123456")

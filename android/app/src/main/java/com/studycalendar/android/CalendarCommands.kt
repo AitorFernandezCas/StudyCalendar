@@ -9,6 +9,7 @@ interface CalendarCommands {
   suspend fun save(task: Task)
   suspend fun reschedule(before: Task, after: Task)
   suspend fun complete(id: String)
+  suspend fun setCompletion(id: String, expected: Boolean, completed: Boolean)
   suspend fun delete(id: String)
   suspend fun saveCategory(category: Category)
   suspend fun deleteCategory(id: String)
@@ -16,5 +17,6 @@ interface CalendarCommands {
   suspend fun deleteProject(id: String)
   suspend fun saveRoutine(id: String, title: String, color: String, active: Boolean, startsOn: LocalDate)
   suspend fun completeRoutine(id: String, date: LocalDate, completed: Boolean)
+  suspend fun setRoutineCompletion(id: String, date: LocalDate, expected: Boolean, completed: Boolean)
   suspend fun deleteRoutine(id: String)
 }

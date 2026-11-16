@@ -161,3 +161,29 @@ Verificación del 2026-11-16:
 - APK final 0.5.1 instalado como actualización con la firma debug existente; conserva los datos. Archivo local: `app/build/outputs/apk/debug/studycalendar-0.5.1-debug.apk`.
 
 Las pruebas de gestos se ejecutan con `:app:connectedDebugAndroidTest` o con el runner de instrumentación tras instalar los APK de aplicación y pruebas con la misma firma. Las nuevas dependencias de pruebas Compose usan el BOM ya fijado; la actividad de pruebas se incorpora únicamente a la variante debug.
+
+
+## Interfaz Android · 0.6.0
+
+La app abre «Todas las tareas» y ofrece cuatro destinos principales: Tareas, Calendario, Proyectos y Rutinas. Configuración reúne cuenta, sincronización, preferencias de calendario y categorías. Un estado compacto conserva visibles los cambios pendientes, errores y conflictos. Cada pantalla conserva su desplazamiento; volver de configuración o de un proyecto restaura el contexto. Cambiar de cuenta descarta borradores y acciones transitorias de la cuenta anterior.
+
+«Todas las tareas» usa la colección completa y muestra tareas personales pendientes en Atrasadas/Hoy/Próximas, tareas fechadas de proyectos activos y rutinas de hoy. Trabajo sin fecha y tareas de proyectos inactivos/completados quedan fuera de esta vista y del contador. El contador incluye los hábitos pendientes y muestra un marcador durante la carga. Las secciones recuerdan su apertura por cuenta y en modo local. La agenda y el historial de proyectos conservan sus criterios anteriores.
+
+Las tarjetas muestran fechas relativas, acciones secundarias en un menú y los títulos de los requisitos pendientes. Completar o desmarcar ofrece «Deshacer». Los comandos de finalización comprueban el estado esperado dentro de la transacción local o de la edición protegida de la réplica: conservan otras modificaciones y rechazan estados obsoletos, restricciones de dependencias y fechas de hábitos de días anteriores. La cola remota y su contrato no cambian.
+
+Los formularios usan selectores nativos de fecha y hora de 24 horas; al cambiar el inicio se conserva la duración hasta el límite del día. El estado del proyecto es una selección única. El formulario de tareas sigue conservando el borrador al crear un proyecto anidado y permite consultar detalles en modo de solo lectura. El calendario compacta su barra, adapta la anchura de día y la altura disponible, y conserva el arrastre y las agendas accesibles. Se centralizan colores y tipografía en el tema Android.
+
+No requiere migración remota ni despliegue de web/backend. La versión debug conserva el identificador `.dev` y usa la actualización habitual, sin borrar los datos de la app.
+
+
+### Verificación de interfaz 0.6.0
+
+- Núcleo Kotlin: 27 pruebas correctas, incluidas cuatro nuevas de visibilidad/contador, orden, cambio de día y duración.
+- Compilación web correcta y 185 pruebas backend correctas. El aviso de tamaño de bundle web y el aviso de caché pytest no impidieron las comprobaciones.
+- Primera compilación Android: APK debug y APK instrumentado correctos; lint con 0 errores, 26 avisos y una sugerencia. Se usó compilación Kotlin en proceso por restricciones del daemon local.
+- La primera ejecución instrumentada incluyó seis fallos de calendario mientras el teléfono estaba bloqueado y un fallo del selector de la nueva prueba del badge. Tras desbloquear, las ocho pruebas de arrastre pasaron. Se añadió una descripción accesible del estado de carga/contador y se corrigió el selector de prueba.
+- La instalación de actualización requiere la misma firma debug anterior. Se comprobó el certificado del APK instalado y se firmó con la clave debug existente del perfil del usuario, conservando datos; no se desinstaló la aplicación.
+
+- Verificación final en POCO X7 Pro / Android 16: **OK (44 tests)**, incluidos nueve casos Compose de interfaz y ocho de arrastre, más persistencia, migraciones, sincronización, conflictos y ajustes. Se probaron el contador accesible, filtros, completar/deshacer, requisitos, selección exclusiva de estado, borrador con proyecto anidado, consulta sin escritura, texto al 200 % y calendario en un espacio de 320 × 360 dp. El primer fallo del badge quedó corregido y las seis pruebas afectadas por el bloqueo pasaron en la ejecución final completa.
+- Compilación y lint finales correctos: **0 errores, 26 avisos y una sugerencia**. APK actualizado instalado con `adb install -r --no-incremental` y arranque verificado. Artefacto con la firma compatible: `app/build/outputs/apk/debug/studycalendar-0.6.0-debug.apk`.
+- Captura revisada con datos desechables: `app/build/frontend-overview.png`. Informes locales ignorados por Git: `build-check.log.local`, `rebuild.log.local` y `final-device-tests.log.local`. Las pruebas usan cuentas simuladas y bases exclusivas/en memoria; no verifican escrituras nuevas contra datos reales de producción. La revisión de TalkBack en uso real y rotación física queda como comprobación manual adicional; las pruebas de tamaño y texto no la sustituyen.
