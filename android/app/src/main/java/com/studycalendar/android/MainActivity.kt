@@ -123,6 +123,7 @@ private fun CalendarApp(model: CalendarViewModel = viewModel()) {
 
 @Composable
 private fun CalendarContent(model: CalendarViewModel) {
+  val graphSessions: ProjectGraphSessions = viewModel()
   val calendarDrag = remember { CalendarDragController() }
   val rows by model.tasks.collectAsStateWithLifecycle(initialValue = null)
   val categoryRows by model.categories.collectAsStateWithLifecycle(initialValue = null)
@@ -175,6 +176,9 @@ private fun CalendarContent(model: CalendarViewModel) {
   val categories = (if (cloud.session == null) categoryRows else cloud.snapshot?.categories).orEmpty().map(CategoryRow::category)
   val routines = if (cloud.session == null) localRoutines else cloud.snapshot?.routines
   val project = projects.find { it.id == selectedProject }
+  val graphPreferences = remember(owner, selectedProject) { ProjectGraphPreferences(context, owner, selectedProject.orEmpty()) }
+  var graphView by remember(owner, selectedProject) { mutableStateOf(graphPreferences.graph) }
+  LaunchedEffect(owner, selectedProject) { graphSessions.activate(owner, selectedProject) }
   val loaded = if (cloud.session != null) cloud.snapshot != null else rows != null && categoryRows != null && projectRows != null && routines != null && !cloud.working
   val pendingCount = if (loaded) Overview.pendingCount(tasks, projects, routines.orEmpty().count { it.row.routine().due(habitDate) && habitDate !in it.completedDates() }) else null
   val completeTask: (Task) -> Unit = { task ->
@@ -193,7 +197,11 @@ private fun CalendarContent(model: CalendarViewModel) {
     }) { setRoutineCompletion(record.row.id, habitDate, wasCompleted, !wasCompleted) }
   }
   val editTask: (Task) -> Unit = { taskSeed = null; editingTask = it; taskProject = null; taskForm = true }
-  BackHandler(screen == Destination.PROJECTS && selectedProject != null) { selectedProject = null }
+  fun projectBack() {
+    val state = project?.let { graphSessions.get(owner, it.id, graphPreferences) }
+    if (!graphView || state?.back() != true) selectedProject = null
+  }
+  BackHandler(screen == Destination.PROJECTS && selectedProject != null) { projectBack() }
 
   BackHandler(screen == Destination.SETTINGS) { screen = previousScreen }
   fun openSettings() { previousScreen = screen; screen = Destination.SETTINGS }
@@ -201,7 +209,7 @@ private fun CalendarContent(model: CalendarViewModel) {
     Surface(color = MaterialTheme.colorScheme.surface) {
       Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (screen == Destination.SETTINGS || (screen == Destination.PROJECTS && project != null)) {
-          IconButton(onClick = { if (screen == Destination.SETTINGS) screen = previousScreen else selectedProject = null }) { Icon(appIcon("Atrás"), "Volver") }
+          IconButton(onClick = { if (screen == Destination.SETTINGS) screen = previousScreen else projectBack() }) { Icon(appIcon("Atrás"), "Volver") }
         }
         Text("StudyCalendar", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         if (screen != Destination.SETTINGS) {
@@ -276,9 +284,22 @@ private fun CalendarContent(model: CalendarViewModel) {
                 open = null, edit = { editingProject = project; projectForm = true }, delete = { deletingProject = project }, changeStatus = { status -> model.execute { saveProject(project.copy(status = status)) } })
             }
             val associated = tasks.filter { it.projectId == project.id }
-            if (associated.isEmpty()) item { Text("Este proyecto todavía no tiene tareas.") }
-            items(associated, key = { it.id }) { task ->
-              TaskCard(task, project, categories.find { it.id == task.categoryId }, (model.busy || model.readOnly), complete = { completeTask(task) }, edit = { editTask(task) }, delete = { deletingTask = task }, today = today, allTasks = tasks)
+            item("project-view") { ProjectViewSwitch(graphView) { graphView = it; graphPreferences.graph = it } }
+            if (graphView) {
+              item("project-plan") {
+                ProjectGraphView(associated, project, today, graphSessions.get(owner, project.id, graphPreferences), graphPreferences,
+                  model.busy || model.readOnly, calendarHeight - 320.dp, editTask, completeTask, { deletingTask = it },
+                  links = { task, desired, result ->
+                    model.execute(onSuccess = { result(true) }, onFailure = { result(false) }) {
+                      setPrerequisites(task.id, project.id, task.prerequisiteIds, desired)
+                    }
+                  })
+              }
+            } else {
+              if (associated.isEmpty()) item { Text("Este proyecto todavía no tiene tareas.") }
+              items(associated, key = { it.id }) { task ->
+                TaskCard(task, project, categories.find { it.id == task.categoryId }, (model.busy || model.readOnly), complete = { completeTask(task) }, edit = { editTask(task) }, delete = { deletingTask = task }, today = today, allTasks = tasks)
+              }
             }
           } else {
             if (projects.isEmpty()) item { Text("Crea un proyecto para organizar sus tareas y ver tu progreso.") }

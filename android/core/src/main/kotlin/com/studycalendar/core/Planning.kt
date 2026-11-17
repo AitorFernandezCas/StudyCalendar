@@ -29,6 +29,12 @@ data class Task(
 }
 
 object Planning {
+  fun withPrerequisites(current: Task, projectId: String, expected: Set<String>, desired: Set<String>): Task {
+    require(current.projectTask && current.projectId == projectId) { "La tarea ha cambiado de proyecto. Vuelve a abrir el plan." }
+    require(current.prerequisiteIds == expected) { "Las tareas previas han cambiado. Revisa las conexiones antes de continuar." }
+    return current.copy(prerequisiteIds = desired.toSet())
+  }
+
   fun save(task: Task, tasks: Collection<Task>) {
     task.validate()
     val previous = tasks.find { it.id == task.id }

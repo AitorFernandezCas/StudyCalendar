@@ -92,6 +92,11 @@ class AccountReplica(val document: JSONObject) {
       .put("color", before?.optString("color") ?: "#4F46E5")
     enqueue("tasks", task.id, if (before == null) "create" else "update", after)
   }
+  fun setPrerequisites(id: String, expectedProjectId: String, expected: Set<String>, desired: Set<String>) {
+    val current = requireNotNull(snapshot().tasks.find { it.id == id }) { "La tarea ya no está disponible." }.task()
+    save(Planning.withPrerequisites(current, expectedProjectId, expected, desired))
+  }
+
   fun complete(id: String) {
     val task = requireNotNull(snapshot().tasks.find { it.id == id }) { "La tarea ya no está disponible." }.task()
     save(task.copy(completed = !task.completed))

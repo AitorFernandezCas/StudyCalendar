@@ -125,6 +125,11 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
     require(current == before) { "La tarea ha cambiado. Revisa su horario antes de moverla." }
     save(current.copy(date = after.date, start = after.start, end = after.end, allDay = after.allDay))
   }
+  override suspend fun setPrerequisites(id: String, expectedProjectId: String, expected: Set<String>, desired: Set<String>) = database.withTransaction {
+    val current = requireNotNull(database.calendar().tasks().find { it.id == id }) { "La tarea ya no está disponible." }.task()
+    save(Planning.withPrerequisites(current, expectedProjectId, expected, desired))
+  }
+
   override suspend fun save(task: Task) = database.withTransaction {
     val rows = database.calendar().tasks()
     task.projectId?.let { id ->

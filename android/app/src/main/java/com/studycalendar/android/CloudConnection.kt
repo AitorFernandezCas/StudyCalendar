@@ -138,6 +138,9 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
     save(current.copy(date = after.date, start = after.start, end = after.end, allDay = after.allDay))
   }
   override suspend fun save(task: Task) = edit { save(task) }
+  override suspend fun setPrerequisites(id: String, expectedProjectId: String, expected: Set<String>, desired: Set<String>) = edit {
+    setPrerequisites(id, expectedProjectId, expected, desired)
+  }
   override suspend fun complete(id: String) = edit { complete(id) }
   override suspend fun setCompletion(id: String, expected: Boolean, completed: Boolean) = edit { setCompletion(id, expected, completed) }
   override suspend fun delete(id: String) = edit { delete(id) }
