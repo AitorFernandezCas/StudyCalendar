@@ -12,11 +12,16 @@ android {
     applicationId = "com.studycalendar.android"
     minSdk = 26
     targetSdk = 36
-    versionCode = 7
-    versionName = "0.6.0"
+    versionCode = 8
+    versionName = "0.7.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
-  buildTypes { debug { applicationIdSuffix = ".dev" } }
+  buildTypes {
+    debug {
+      // Instrumentation can run beside the user's app without updating it or opening its data.
+      applicationIdSuffix = if (providers.gradleProperty("isolatedUiTests").orNull == "true") ".graphcheck" else ".dev"
+    }
+  }
   compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true }
   sourceSets.getByName("androidTest").assets.srcDir("schemas")

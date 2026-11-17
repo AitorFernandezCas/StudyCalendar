@@ -16,7 +16,7 @@ Room conserva cada cambio y su registro local en la misma transacción. La migra
 
 Esta entrega mantiene el modo local y añade el protocolo de escritura de cuenta, cola offline y resolución de conflictos (detalle al final). La base `local-preview.db` y su registro no se envían ni se asocian automáticamente a una cuenta. Mientras el servidor no anuncie protocolo 1, la cuenta continúa en consulta. El identificador debug termina en `.dev`.
 
-Pendiente de activación compartida: migración y publicación coordinada del contrato de escritura ya implementado. Fuera de esta entrega: diagrama visual de proyectos, edición de preferencias desde Android y programación/acciones de recordatorios.
+El contrato de escritura se activó posteriormente (véase 0.4.0). El diagrama visual de proyectos se incorpora en 0.7.0, descrito al final. La programación y las acciones de recordatorios siguen fuera de esta entrega.
 
 ## Categorías en Android
 
@@ -187,3 +187,27 @@ No requiere migración remota ni despliegue de web/backend. La versión debug co
 - Verificación final en POCO X7 Pro / Android 16: **OK (44 tests)**, incluidos nueve casos Compose de interfaz y ocho de arrastre, más persistencia, migraciones, sincronización, conflictos y ajustes. Se probaron el contador accesible, filtros, completar/deshacer, requisitos, selección exclusiva de estado, borrador con proyecto anidado, consulta sin escritura, texto al 200 % y calendario en un espacio de 320 × 360 dp. El primer fallo del badge quedó corregido y las seis pruebas afectadas por el bloqueo pasaron en la ejecución final completa.
 - Compilación y lint finales correctos: **0 errores, 26 avisos y una sugerencia**. APK actualizado instalado con `adb install -r --no-incremental` y arranque verificado. Artefacto con la firma compatible: `app/build/outputs/apk/debug/studycalendar-0.6.0-debug.apk`.
 - Captura revisada con datos desechables: `app/build/frontend-overview.png`. Informes locales ignorados por Git: `build-check.log.local`, `rebuild.log.local` y `final-device-tests.log.local`. Las pruebas usan cuentas simuladas y bases exclusivas/en memoria; no verifican escrituras nuevas contra datos reales de producción. La revisión de TalkBack en uso real y rotación física queda como comprobación manual adicional; las pruebas de tamaño y texto no la sustituyen.
+
+## Gráfico de proyectos · 0.7.0
+
+Cada proyecto ofrece «Gráfico / Lista» y empieza en el gráfico. La elección y las posiciones de tarjetas se recuerdan por cuenta/proyecto únicamente en el teléfono. Se incluyen tareas con fecha, sin fecha y completadas; «Sin proyecto» mantiene su lista. No cambia el significado del progreso ni de los estados del proyecto.
+
+Tocar una tarjeta abre su hoja de acciones, horario, requisitos y tareas dependientes. Mantener pulsado permite moverla, con desplazamiento al alcanzar los bordes. Arrastrar el fondo desplaza la cámara; pellizcar o pulsar los botones cambia el zoom (40–160 %). Hay controles de movimiento y acciones accesibles/teclado. «Conectar con…» elige primero una tarea previa y después su dependiente; la hoja también permite seleccionar y quitar requisitos. Se conservan las validaciones, confirmaciones y el aviso Deshacer existentes.
+
+«Ver rama» muestra antecesores y descendientes de la tarea elegida, con disposición temporal independiente. Los requisitos ocultos siguen bloqueando y se identifican como fuera de rama. Volver al proyecto completo restaura su cámara y posiciones. La cámara y la selección sobreviven a rotación y Lista/Gráfico mediante estado retenido; al morir el proceso se recuperan solo las preferencias persistentes. El diseño y las decisiones están en [android-graph-planning.md](../docs/android-graph-planning.md).
+
+El comando protegido de requisitos modifica únicamente ese campo sobre la tarea actual, dentro de la transacción local o del bloqueo de la réplica de cuenta. Rechaza cambios obsoletos del proyecto o de sus conexiones, conserva otras ediciones y usa la cola offline/conflictos existentes. Las posiciones no entran en esa cola. No requiere migración de Room/Supabase ni despliegue de web/backend.
+
+Para verificar la UI en una instalación desechable, añadir `-PisolatedUiTests=true` al comando Gradle de pruebas. Usa `com.studycalendar.android.graphcheck` y sus propios datos, sin actualizar `.dev`. La compilación normal mantiene identificador y firma de actualización. Entregar el APK compilado sin esa propiedad.
+
+### Verificación del gráfico · 2026-11-17
+
+- Núcleo Kotlin: **33 pruebas correctas**, incluidas seis del gráfico (disposición, ramas, cadenas de 3.001 tareas, coordenadas, requisitos protegidos y rutas que evitan tarjetas ajenas).
+- POCO X7 Pro / Android 16: **OK (58 tests)** en la instalación aislada. Tras corregir una flecha que atravesaba visualmente otra tarjeta y reutilizar los cálculos de disposición/rutas al ampliar/desplazar, se repitieron las 14 pruebas afectadas: **OK (14 tests)**. Incluyen toque real, conexiones y eliminación, completar/desbloquear, movimiento con zoom, cancelación, pellizco/desplazamiento, ramas y cámara, recreación de la composición, texto al 200 %, persistencia, cola offline, reinicio y conflictos.
+- Compilación de APK debug y test APK correcta; lint sin errores. Los avisos de bibliotecas/KTX y de kapt no impiden la compilación. Web compilada y **185 pruebas backend correctas**; se mantienen los avisos de tamaño de bundle y caché pytest.
+- Capturas revisadas con tareas desechables: `app/build/graph-verification/project-graph-branches.png` y `project-graph-narrow.png`. Informes de dispositivo: `device-tests.txt` y `final-graph-tests.txt` en el mismo directorio generado. La primera instalación aislada fue rechazada por HyperOS; los tests comenzaron después de que el usuario aceptase los avisos de instalación USB.
+- APK de entrega: `dist/studycalendar-0.7.0-debug.apk`, con el identificador normal `.dev`, versión 0.7.0/código 8 y el mismo certificado debug de la aplicación instalada. No se actualizó la app del usuario; las pruebas utilizaron exclusivamente `.graphcheck`, cuentas simuladas y bases de pruebas.
+
+No se han ejecutado nuevas escrituras autenticadas contra producción. La inspección con TalkBack en uso real y la rotación física siguen siendo comprobaciones manuales adicionales; las pruebas de semántica, tamaño y recreación no las sustituyen.
+
+Instalación solicitada posteriormente por el usuario el 2026-11-17: APK 0.7.0 instalado en el POCO como actualización con `adb install -r --no-incremental`, sin desinstalar ni borrar datos. El dispositivo confirma versión 0.7.0/código 8. Arranque en frío correcto (`Status: ok`), proceso activo y sin errores AndroidRuntime del proceso en la comprobación posterior. El gráfico se abre desde Proyectos al entrar en un proyecto y seleccionar «Gráfico».
