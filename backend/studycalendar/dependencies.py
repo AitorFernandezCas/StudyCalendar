@@ -3,7 +3,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Protocol
 from .categories.ports import CategoryRepository
-from .projects.ports import ProjectRepository
+from .projects.ports import FeatureRepository, ProjectRepository
 from .tasks.ports import TaskRepository
 from .routines.ports import RoutineRepository, RoutineSummaries
 from .queries.ports import ActivityRepository
@@ -23,6 +23,7 @@ class Repositories:
     activity: ActivityRepository | None = None
     preferences: PreferencesRepository | None = None
     sync: SyncGateway | None = None
+    features: FeatureRepository | None = None
 
 
 class RepositoryProvider(Protocol):

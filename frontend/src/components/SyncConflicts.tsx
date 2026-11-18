@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import { FormDialog } from './FormDialog'
 import { sendSync, type SyncConflict } from '../lib/syncApi'
 
-const labels: Record<string, string> = { title: 'Título', name: 'Nombre', date: 'Fecha', start_time: 'Inicio', end_time: 'Fin', completed: 'Completada', active: 'Activa', all_day: 'Todo el día', status: 'Estado', color: 'Color', project_id: 'Proyecto', category_id: 'Categoría', prerequisite_ids: 'Tareas previas', delete: 'Eliminación' }
+const labels: Record<string, string> = { title: 'Título', name: 'Nombre', description: 'Descripción', date: 'Fecha', start_time: 'Inicio', end_time: 'Fin', completed: 'Completada', active: 'Activa', all_day: 'Todo el día', status: 'Estado', color: 'Color', project_id: 'Proyecto', feature_id: 'Funcionalidad', category_id: 'Categoría', prerequisite_ids: 'Tareas previas', delete: 'Eliminación' }
 const display = (value: unknown) => value === null || value === undefined ? 'Sin valor' : value === true ? 'Sí' : value === false ? 'No' : Array.isArray(value) ? value.join(', ') : String(value)
 
 export function SyncConflicts({ session, onResolved }: { session: Session; onResolved: (conflict: SyncConflict) => void }) {

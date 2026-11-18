@@ -8,8 +8,8 @@ from ..tasks.domain import Task
 from ..tasks.ports import TaskRepository
 from ..categories.domain import Category
 from ..categories.ports import CategoryRepository
-from ..projects.domain import Project
-from ..projects.ports import ProjectRepository
+from ..projects.domain import Project, ProjectFeature, ProjectFeatureLink
+from ..projects.ports import FeatureRepository, ProjectRepository
 from ..shared.ports import Clock
 
 
@@ -18,15 +18,18 @@ class Bootstrap:
     categories: list[Category]
     projects: list[Project]
     tasks: list[Task]
+    features: list[ProjectFeature]
+    feature_links: list[ProjectFeatureLink] | None
 
 
 class QueryService:
-    def __init__(self, tasks: TaskRepository, categories: CategoryRepository, projects: ProjectRepository, clock: Clock, activity: ActivityRepository | None = None):
+    def __init__(self, tasks: TaskRepository, categories: CategoryRepository, projects: ProjectRepository, clock: Clock, activity: ActivityRepository | None = None, features: FeatureRepository | None = None):
         self.tasks = tasks
         self.categories = categories
         self.projects = projects
         self.clock = clock
         self.activity_repository = activity
+        self.features = features
 
     def activity(self, year: str | None) -> ActivitySnapshot:
         day = self.clock.day()
@@ -74,4 +77,6 @@ class QueryService:
 
     def bootstrap(self, start: str | None, end: str | None) -> Bootstrap:
         first, last = date_range(start, end, self.clock)
-        return Bootstrap(self.categories.list(), self.projects.list(), self.tasks.list(first, last))
+        features = self.features.list() if self.features is not None else []
+        links = self.features.list_links() if self.features is not None else None
+        return Bootstrap(self.categories.list(), self.projects.list(), self.tasks.list(first, last), features, links)

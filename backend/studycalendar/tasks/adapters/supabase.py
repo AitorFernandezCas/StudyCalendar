@@ -5,7 +5,7 @@ from ..domain import Task
 from ...shared.domain import BusinessError
 
 LEGACY_TASK_SELECT = "id,title,category_id,project_id,task_type,date,start_time,end_time,color,completed"
-TASK_SELECT = LEGACY_TASK_SELECT + ",all_day,prerequisite_ids"
+TASK_SELECT = LEGACY_TASK_SELECT + ",all_day,prerequisite_ids,feature_id"
 
 
 def missing_all_day(error: APIError) -> bool:
@@ -72,7 +72,7 @@ class SupabaseTaskRepository:
         return {key: value for key, value in payload.items() if key != "all_day"}
 
     def create(self, payload: dict) -> Task:
-        row = self.table().insert(self.write_payload(payload)).execute().data[0]
+        row = self.write(self.table().insert(self.write_payload(payload))).data[0]
         return Task.from_record({"all_day": False, **row})
 
     def update(self, identifier: str, payload: dict) -> Task | None:
@@ -81,8 +81,17 @@ class SupabaseTaskRepository:
             # Setting an already-false legacy value still checks ownership via RLS.
             rows = self.table().select(LEGACY_TASK_SELECT).eq("id", identifier).execute().data or []
         else:
-            rows = self.table().update(compatible_payload).eq("id", identifier).execute().data or []
+            rows = self.write(self.table().update(compatible_payload).eq("id", identifier)).data or []
         return Task.from_record({"all_day": False, **rows[0]}) if rows else None
+
+    @staticmethod
+    def write(query):
+        try:
+            return query.execute()
+        except APIError as error:
+            if error.code == "23503" and "tasks_feature_membership_fkey" in (error.message or ""):
+                raise BusinessError("La funcionalidad ya no está disponible en este proyecto", "conflict") from error
+            raise
 
     def delete(self, identifier: str) -> bool:
         return bool(self.table().delete().eq("id", identifier).execute().data)

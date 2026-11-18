@@ -2,8 +2,8 @@ import { SyncConflicts } from './components/SyncConflicts'
 import type { SyncBase, SyncConflict } from './lib/syncApi'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { bootstrapApi, calendarApi, categoriesApi, projectsApi, routinesApi, tasksApi, type ApiCategory, type ApiProject, type ApiRoutine, type ApiTask, type ProjectStatus } from './lib/api'
-import { ProjectPlan } from './components/ProjectPlan'
+import { bootstrapApi, calendarApi, categoriesApi, featureLinksApi, featuresApi, projectsApi, routinesApi, tasksApi, type ApiCategory, type ApiFeature, type ApiFeatureLink, type ApiProject, type ApiRoutine, type ApiTask, type ProjectStatus } from './lib/api'
+import { FeaturePlans, type FeatureActions } from './components/FeaturePlans'
 import { CalendarTimeGrid } from './components/CalendarTimeGrid'
 import { CardMetadata } from './components/CardMetadata'
 import type { Task, TaskType } from './lib/taskTypes'
@@ -35,8 +35,8 @@ const colors = ['#7c5cff', '#ee7b6f', '#f2b84b', '#3fba91', '#4f8ff7']
 const pad = (n: number) => String(n).padStart(2, '0')
 const iso = (d: Date) => String(d.getFullYear()) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
 const toMinutes = (value: string) => { const [hour, minute] = value.split(':').map(Number); return hour * 60 + minute }
-const fromApi = (task: ApiTask): Task => ({ sync: task._sync, id: task.id, title: task.title, categoryId: task.category_id, projectId: task.project_id, taskType: task.task_type, date: task.date || '', time: task.start_time?.slice(0, 5) || '09:00', endTime: task.end_time?.slice(0, 5) || '10:00', prerequisiteIds: task.prerequisite_ids || [], color: task.color, done: task.completed, allDay: task.all_day ?? false })
-const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, project_id: task.projectId, task_type: task.taskType, date: task.date || null, ...(task.date ? taskSchedule(task) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: task.prerequisiteIds || [], color: task.color, completed: task.done })
+const fromApi = (task: ApiTask): Task => ({ sync: task._sync, id: task.id, title: task.title, categoryId: task.category_id, projectId: task.project_id, featureId: task.feature_id ?? null, taskType: task.task_type, date: task.date || '', time: task.start_time?.slice(0, 5) || '09:00', endTime: task.end_time?.slice(0, 5) || '10:00', prerequisiteIds: task.prerequisite_ids || [], color: task.color, done: task.completed, allDay: task.all_day ?? false })
+const toApi = (task: Omit<Task, 'id'>) => ({ title: task.title, category_id: task.categoryId, project_id: task.taskType === 'project' ? task.projectId : null, ...(task.taskType === 'project' && task.featureId ? { feature_id: task.featureId } : {}), task_type: task.taskType, date: task.date || null, ...(task.date ? taskSchedule(task) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: task.prerequisiteIds || [], color: task.color, completed: task.done })
 
 const compareDayTasks = (a: Task, b: Task) => Number(b.allDay) - Number(a.allDay) || (a.allDay ? a.title.localeCompare(b.title, 'es') : a.time.localeCompare(b.time)) || a.id.localeCompare(b.id)
 const taskTimeLabel = (task: Task) => !task.date ? 'Sin fecha' : task.allDay ? 'Todo el día' : task.time + ' — ' + task.endTime
@@ -145,13 +145,13 @@ function RoutineStreaks({ routine }: { routine: ApiRoutine }) {
   return <span className="routine-streaks"><span>Racha actual:&nbsp;<b>{routine.current_streak}</b> {routine.current_streak === 1 ? 'día' : 'días'}</span><span>Máxima:&nbsp;<b>{routine.max_streak}</b> {routine.max_streak === 1 ? 'día' : 'días'}</span></span>
 }
 
-function OverviewTaskRow({ task, categoryName, projectName, onEdit, onToggle, onDelete, busy = false, today }: React.ComponentProps<typeof OverviewTask> & { today: string }) {
+function OverviewTaskRow({ task, categoryName, projectName, featureName, onEdit, onToggle, onDelete, busy = false, today }: React.ComponentProps<typeof OverviewTask> & { today: string; featureName?: string }) {
   return <article className={'overview-work-row' + (task.done ? ' done' : '')} style={{ '--task-color': task.color } as React.CSSProperties}>
     <button className="row-completion" disabled={busy || (!task.done && Boolean(task.blockedBy?.length))} aria-pressed={task.done} title={task.done ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(task.done ? 'Marcar como pendiente ' : 'Marcar como completada ') + task.title} onClick={() => onToggle(task.id)}><CompletionIcon completed={task.done} /></button>
     <button className="row-edit" disabled={busy} aria-label={'Editar tarea ' + task.title} onClick={() => onEdit(task)}>
       <strong>{task.title}</strong>
       {task.blockedBy?.length ? <small className="blocked-label">Bloqueada: {task.blockedBy.join(', ')}</small> : null}
-      <span className="row-metadata"><time dateTime={task.date} title={task.date ? new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' }) : 'Sin fecha'}>{relativeTaskDate(task.date, today)}</time><span aria-hidden="true">·</span><span>{taskTimeLabel(task)}</span><span className="row-category">{projectName || categoryName}</span></span>
+      <span className="row-metadata"><time dateTime={task.date} title={task.date ? new Date(task.date + 'T12:00:00').toLocaleDateString('es-ES', { dateStyle: 'long' }) : 'Sin fecha'}>{relativeTaskDate(task.date, today)}</time><span aria-hidden="true">·</span><span>{taskTimeLabel(task)}</span><span className="row-category">{projectName || categoryName}</span>{featureName && <span className="row-feature">{featureName}</span>}</span>
     </button>
     <button className="row-delete" disabled={busy} title="Eliminar tarea" aria-label={'Eliminar tarea ' + task.title} onClick={() => onDelete(task.id)}><DeleteIcon /></button>
   </article>
@@ -179,12 +179,14 @@ function DailyHabits({ habits, busy, onComplete }: { habits: ReturnType<typeof u
 type ProjectListProps = {
   tasks: Task[]
   projects: ApiProject[]
+  features: ApiFeature[]
+  featureActions?: FeatureActions
   categoryName: (id: string | null) => string
   onEdit: (task: Task) => void
   onToggle: (id: string) => void
   onDelete: (id: string) => void
   onNewProject: () => void
-  onNewProjectTask?: (project: ApiProject) => void
+  onNewProjectTask?: (project: ApiProject, featureId?: string | null) => void
   onEditProject: (project: ApiProject) => void
   onDeleteProject: (project: ApiProject) => void
   onChangeProjectStatus?: (project: ApiProject, status: ProjectStatus) => void
@@ -219,11 +221,11 @@ function CollapsibleSection({ title, count, countLabel, expanded, onToggle, clas
   </section>
 }
 
-function OverviewProjects({ tasks, projects, today, categoryName, onEdit, onToggle, onDelete, onNewProject, onNewProjectTask, projectBusy }: ProjectListProps & { today: string }) {
+function OverviewProjects({ tasks, projects, features, today, categoryName, onEdit, onToggle, onDelete, onNewProject, onNewProjectTask, projectBusy }: ProjectListProps & { today: string }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(projects.filter(project => tasks.some(task => task.projectId === project.id)).slice(0, 1).map(project => project.id)))
   const listedProjects = [...projects].sort((a, b) => Number(tasks.some(task => task.projectId === b.id)) - Number(tasks.some(task => task.projectId === a.id)) || a.name.localeCompare(b.name, 'es'))
   const unassigned = tasks.filter(task => !task.projectId)
-  const renderTask = (task: Task) => <OverviewTaskRow key={task.id} task={task} today={today} busy={projectBusy} categoryName={categoryName(task.categoryId)} projectName={projects.find(project => project.id === task.projectId)?.name} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} />
+  const renderTask = (task: Task) => <OverviewTaskRow key={task.id} task={task} today={today} busy={projectBusy} categoryName={categoryName(task.categoryId)} projectName={projects.find(project => project.id === task.projectId)?.name} featureName={features.find(feature => feature.id === task.featureId)?.name} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} />
   return <div className="overview-projects">
     {listedProjects.map(project => {
       const associated = tasks.filter(task => task.projectId === project.id)
@@ -263,7 +265,7 @@ function ProjectTaskGroups({ tasks, history, renderTask }: { tasks: Task[]; hist
   </div>
 }
 
-function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete, onNewProjectTask, onEditProject, onDeleteProject, onChangeProjectStatus, projectBusy, onLinks, history = false, statusFilter, showUnassigned = true, onlyUnassigned = false, displayTasks }: ProjectListProps & { history?: boolean; statusFilter?: ProjectStatus; showUnassigned?: boolean; onlyUnassigned?: boolean; displayTasks?: Task[] }) {
+function ProjectList({ tasks, projects, features, featureActions, categoryName, onEdit, onToggle, onDelete, onNewProjectTask, onEditProject, onDeleteProject, onChangeProjectStatus, projectBusy, onLinks, history = false, statusFilter, showUnassigned = true, onlyUnassigned = false, displayTasks }: ProjectListProps & { history?: boolean; statusFilter?: ProjectStatus; showUnassigned?: boolean; onlyUnassigned?: boolean; displayTasks?: Task[] }) {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const projectTasks = useMemo(() => tasks.filter(task => task.taskType === 'project').sort((a, b) => a.date.localeCompare(b.date) || compareDayTasks(a, b)), [tasks])
   const projectById = useMemo(() => new Map(projects.map(project => [project.id, project])), [projects])
@@ -298,7 +300,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
         {associated.length > 0 && <div className="project-progress" role="progressbar" aria-label={'Progreso de ' + project.name} aria-valuetext={completed + ' de ' + associated.length + ' tareas completadas'} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><i style={{ width: progress + '%' }} /></div>}
         <div className="project-details" id={contentId} hidden={!expanded}>
           <div className="project-card-head">
-            {onNewProjectTask && project.status === 'active' ? <button className="project-add-task" type="button" disabled={projectBusy} aria-label={'Añadir tarea a ' + project.name} onClick={() => onNewProjectTask(project)}>＋ Añadir tarea</button> : <span className="project-details-label">Tareas e historial</span>}
+            {!featureActions && onNewProjectTask && project.status === 'active' ? <button className="project-add-task" type="button" disabled={projectBusy} aria-label={'Añadir tarea a ' + project.name} onClick={() => onNewProjectTask(project)}>＋ Añadir tarea</button> : <span className="project-details-label">{featureActions ? '' : 'Tareas e historial'}</span>}
             <div className="project-card-actions">
               <button className="project-edit-button" disabled={projectBusy} aria-label={'Editar ' + project.name} title="Editar proyecto" onClick={() => onEditProject(project)}>
                 <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -312,7 +314,7 @@ function ProjectList({ tasks, projects, categoryName, onEdit, onToggle, onDelete
               </button>
             </div>
           </div>
-          {history && onLinks ? <ProjectPlan storageKey={'studycalendar:project-layout:' + project.id} tasks={associated} busy={Boolean(projectBusy)} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} onLinks={onLinks} /> : <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />}
+          {history && onLinks && featureActions && onNewProjectTask ? <FeaturePlans project={project} features={features} tasks={associated} busy={Boolean(projectBusy)} actions={featureActions} onNewTask={onNewProjectTask} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} onLinks={onLinks} /> : <ProjectTaskGroups tasks={displayedTasks.filter(task => task.projectId === project.id)} history={history} renderTask={renderTask} />}
         </div>
       </article>
     })}</div> : <p className="overview-empty">{statusFilter ? 'No hay proyectos ' + projectStatuses.find(status => status.value === statusFilter)?.group.toLowerCase() + '.' : 'No hay proyectos activos.'}</p>)}
@@ -493,6 +495,16 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const routines = habits.routines
   const [categories, setCategories] = useState<Category[]>([])
   const [projects, setProjects] = useState<ApiProject[]>([])
+  const [features, setFeatures] = useState<ApiFeature[]>([])
+  const [featureLinks, setFeatureLinks] = useState<ApiFeatureLink[] | null>(null)
+  const [featureDialog, setFeatureDialog] = useState<
+    { mode: 'edit'; projectId: string; feature?: ApiFeature; name: string; description: string }
+    | { mode: 'delete'; feature: ApiFeature }
+  >()
+  const [featureError, setFeatureError] = useState('')
+  const savingFeature = useRef(false)
+  const savingFeatureLink = useRef(false)
+  const originalFeatureId = useRef<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [selectedRoutine, setSelectedRoutine] = useState<string | null>(null)
   const [isModal, setIsModal] = useState(false)
@@ -569,6 +581,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       if (entity === 'category' && categorySelected === id) setCategoryModal(false)
       if (entity === 'tasks' && taskToDelete?.id === id) setTaskToDelete(null)
       if (entity === 'projects' && projectToDelete?.id === id) setProjectToDelete(null)
+      if (entity === 'project_features' && (featureDialog?.feature?.id === id || !featureDialog?.feature)) setFeatureDialog(undefined)
     }))
     setBootstrapAttempt(attempt => attempt + 1)
     setActivityRevision(value => value + 1)
@@ -618,6 +631,8 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       }
       setCategories(data.categories)
       setProjects(data.projects)
+      setFeatures(data.features || [])
+      setFeatureLinks(data.feature_links ?? null)
       setInitialDataLoaded(true)
       setError('')
     }).catch(e => { if (controller.signal.aborted) return; setReadErrors(current => ({ ...current, bootstrap: e instanceof Error ? e.message : 'No se pudieron cargar los datos' })) }).finally(() => { if (!controller.signal.aborted) { bootstrapRangeRef.current = null; setLoading(false) } })
@@ -670,12 +685,12 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     setIsModal(true)
   }
   const openNewRoutine = () => { if (habits.ready) openNew(habits.date, '09:00', 'routine') }
-  const openNewProjectTask = (project: ApiProject) => {
+  const openNewProjectTask = (project: ApiProject, featureId: string | null = null) => {
     if (busyAction || !initialDataLoaded || !projects.some(item => item.id === project.id)) return
     openNew('', '09:00', 'project', false)
-    setDraft(current => ({ ...current, projectId: project.id, color: project.color }))
+    setDraft(current => ({ ...current, projectId: project.id, featureId, color: project.color }))
   }
-  const edit = (task: Task) => { setEditBase(task.sync); setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay, prerequisiteIds: task.prerequisiteIds || [] }); setTaskError(''); setIsModal(true) }
+  const edit = (task: Task) => { originalFeatureId.current = task.featureId ?? null; setEditBase(task.sync); setSelected(task.id); setSelectedRoutine(null); setDraft({ title: task.title, categoryId: task.categoryId, projectId: task.projectId, featureId: task.featureId ?? null, taskType: task.taskType, date: task.date, time: task.time, endTime: task.endTime, color: task.color, done: task.done, allDay: task.allDay, prerequisiteIds: task.prerequisiteIds || [] }); setTaskError(''); setIsModal(true) }
   const editRoutine = (routine: ApiRoutine) => { setEditBase(routine._sync); setSelected(null); setSelectedRoutine(routine.id); setRoutineActive(routine.active); setDraft({ title: routine.title, categoryId: null, projectId: null, taskType: 'routine', date: habits.date, time: '09:00', endTime: '10:00', color: routine.color, done: false, allDay: false }); setTaskError(''); setIsModal(true) }
   const save = async () => {
     if (busyAction) return
@@ -702,6 +717,8 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         setActivityRevision(value => value + 1)
       } else if (selected) {
         const updatePayload: Partial<Omit<ApiTask, 'id'>> = { title: draft.title.trim(), task_type: draft.taskType, project_id: draft.taskType === 'project' ? draft.projectId : null, date: draft.date || null, ...(draft.date ? taskSchedule(draft) : { start_time: null, end_time: null, all_day: false }), prerequisite_ids: draft.prerequisiteIds || [], color: draft.color, completed: draft.done }
+        const nextFeature = draft.taskType === 'project' && draft.projectId ? draft.featureId ?? null : null
+        if (nextFeature !== originalFeatureId.current) updatePayload.feature_id = nextFeature
         if (!original || original.categoryId !== draft.categoryId) updatePayload.category_id = draft.categoryId
         const updated = fromApi(await tasksApi.update(session, selected, updatePayload, editBase))
         updateTaskState(prev => [...prev.filter(task => task.id !== selected), updated])
@@ -823,7 +840,7 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       } else {
         const created = await projectsApi.create(session, payload)
         setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
-        if (isModal && draft.taskType === 'project') setDraft(current => ({ ...current, projectId: created.id, color: created.color }))
+        if (isModal && draft.taskType === 'project') setDraft(current => ({ ...current, projectId: created.id, featureId: null, color: created.color }))
       }
       setProjectModal(false)
       setError('')
@@ -843,6 +860,8 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
     try {
       await projectsApi.remove(session, id, projectToDelete._sync)
       setProjects(prev => prev.filter(item => item.id !== id))
+      setFeatures(prev => prev.filter(feature => feature.project_id !== id))
+      setFeatureLinks(prev => prev?.filter(link => link.project_id !== id) ?? null)
       updateTaskState(prev => prev.filter(task => task.projectId !== id))
       focusAfterProjectDelete.current = true
       setProjectToDelete(null)
@@ -851,6 +870,79 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       setDeleteProjectError('No se pudo eliminar el proyecto. Inténtalo de nuevo.')
     } finally {
       deletingProject.current = false
+      setBusyAction(null)
+    }
+  }
+  const openFeature = (projectId: string, feature?: ApiFeature) => {
+    if (busyAction) return
+    setFeatureError('')
+    setFeatureDialog({ mode: 'edit', projectId, feature, name: feature?.name || '', description: feature?.description || '' })
+  }
+  const saveFeatureLink = async (change: { remove: ApiFeatureLink } | Omit<ApiFeatureLink, 'id' | '_sync'>) => {
+    if (busyAction || savingFeatureLink.current) return
+    savingFeatureLink.current = true
+    setBusyAction('feature-link')
+    try {
+      if ('remove' in change) {
+        await featureLinksApi.remove(session, change.remove)
+        setFeatureLinks(current => current?.filter(link => link.id !== change.remove.id) ?? null)
+      } else {
+        const link = await featureLinksApi.create(session, change)
+        setFeatureLinks(current => [...(current || []).filter(item => item.id !== link.id), link])
+      }
+    } finally {
+      savingFeatureLink.current = false
+      setBusyAction(null)
+    }
+  }
+  const featureActions: FeatureActions = {
+    accountId: session.user.id,
+    links: featureLinks,
+    connect: (project_id, source_feature_id, target_feature_id) => saveFeatureLink({ project_id, source_feature_id, target_feature_id }),
+    disconnect: link => saveFeatureLink({ remove: link }),
+    create: project => openFeature(project.id),
+    edit: feature => openFeature(feature.project_id, feature),
+    remove: feature => {
+      if (busyAction) return
+      setFeatureError('')
+      setFeatureDialog({ mode: 'delete', feature })
+    },
+  }
+  const submitFeature = async () => {
+    if (!featureDialog || busyAction || savingFeature.current) return
+    if (featureDialog.mode === 'edit' && !featureDialog.name.trim()) {
+      setFeatureError('Introduce un nombre para la funcionalidad.')
+      focusFormField('.feature-modal', 'name')
+      return
+    }
+    savingFeature.current = true
+    setBusyAction('feature')
+    setFeatureError('')
+    try {
+      const feature = featureDialog.feature
+      if (featureDialog.mode === 'delete') {
+        await featuresApi.remove(session, featureDialog.feature.id, featureDialog.feature._sync)
+        setFeatures(current => current.filter(item => item.id !== featureDialog.feature.id))
+        setFeatureLinks(current => current?.filter(link =>
+          link.source_feature_id !== featureDialog.feature.id && link.target_feature_id !== featureDialog.feature.id) ?? null)
+        updateTaskState(current => current.map(task => task.featureId === featureDialog.feature.id ? { ...task, featureId: null } : task))
+        // The foreign key changes task revisions through the sync trigger.
+        // Reload the full task collection before accepting new edits.
+        setOverviewLoaded(false)
+        loadedRangeRef.current = null
+        setBootstrapAttempt(attempt => attempt + 1)
+      } else {
+        const payload = { name: featureDialog.name.trim(), description: featureDialog.description.trim() || null }
+        const saved = feature
+          ? await featuresApi.update(session, feature.id, payload, feature._sync)
+          : await featuresApi.create(session, { ...payload, project_id: featureDialog.projectId })
+        setFeatures(current => [...current.filter(item => item.id !== saved.id), saved])
+      }
+      setFeatureDialog(undefined)
+    } catch (failure) {
+      setFeatureError(failure instanceof Error ? failure.message : 'No se pudo guardar la funcionalidad.')
+    } finally {
+      savingFeature.current = false
       setBusyAction(null)
     }
   }
@@ -971,9 +1063,9 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         </section>}
       </>) : screen === 'routines' ? (habits.ready ? <RoutinesView userId={session.user.id} habits={habits} activation={habits.activation} activationError={habits.activationError} changedId={habits.changedId} focusId={routineFocusId} routines={routines} onBack={() => setScreen('overview')} onEditRoutine={editRoutine} onToggleRoutine={toggleRoutine} onDeleteRoutine={deleteRoutine} busy={modalBusy} /> : <RoutineLoadState habits={habits} />)
         : (overviewLoading || !overviewLoaded || !initialDataLoaded) ? <div className="calendar-loading" role="status">{readError || error ? 'No se pudieron cargar las tareas.' : 'Cargando tareas…'}</div>
-        : screen === 'projects' ? <ProjectsView onLinks={changeLinks} tasks={overviewTasks} projects={projects} onNewProjectTask={openNewProjectTask} onChangeProjectStatus={changeProjectStatus} projectBusy={modalBusy} categoryName={categoryName} onBack={() => setScreen('overview')} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
+        : screen === 'projects' ? <ProjectsView onLinks={changeLinks} tasks={overviewTasks} projects={projects} features={features} featureActions={featureActions} onNewProjectTask={openNewProjectTask} onChangeProjectStatus={changeProjectStatus} projectBusy={modalBusy} categoryName={categoryName} onBack={() => setScreen('overview')} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
         : <>
-          <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewProjectTask={openNewProjectTask} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
+          <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewProjectTask={openNewProjectTask} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} features={features} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
           <ActivityHeatmap key={session.user.id} session={session} revision={activityRevision} />
         </>}
     </main>
@@ -991,10 +1083,14 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
         <div className="form-grid">
           {draft.taskType !== 'routine' && <label>Categoría<select value={draft.categoryId || ''} onChange={e => { const category = categories.find(item => item.id === e.target.value); setDraft({ ...draft, categoryId: e.target.value || null, color: category?.color || draft.color }) }}><option value="">Sin categoría</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>}
           {draft.taskType !== 'routine' && <label>Tipo de tarea<select value={draft.taskType} onChange={e => { setTaskError(''); setDraft({ ...draft, taskType: e.target.value as TaskType }) }}><option value="daily">Tarea personal</option><option value="project">Tarea de proyecto</option></select></label>}
-          {draft.taskType === 'project' && <div className="project-field"><label>Proyecto<select name="project" value={draft.projectId || ''} aria-describedby="project-field-hint" onChange={e => { const project = projects.find(item => item.id === e.target.value); setTaskError(''); setDraft({ ...draft, projectId: e.target.value || null, color: project?.color || draft.color }) }}><option value="">Sin proyecto</option>{selectableProjects.map(project => <option key={project.id} value={project.id}>{project.name}{project.status === 'active' ? '' : ' · ' + projectStatuses.find(status => status.value === project.status)?.label}</option>)}</select></label>
+          {draft.taskType === 'project' && <div className="project-field"><label>Proyecto<select name="project" value={draft.projectId || ''} aria-describedby="project-field-hint" onChange={e => { const project = projects.find(item => item.id === e.target.value); setTaskError(''); setDraft({ ...draft, projectId: e.target.value || null, featureId: null, color: project?.color || draft.color }) }}><option value="">Sin proyecto</option>{selectableProjects.map(project => <option key={project.id} value={project.id}>{project.name}{project.status === 'active' ? '' : ' · ' + projectStatuses.find(status => status.value === project.status)?.label}</option>)}</select></label>
             <p className="form-hint" id="project-field-hint">{selectedProject && selectedProject.status !== 'active' ? 'Este proyecto está ' + (selectedProject.status === 'inactive' ? 'inactivo' : 'completado') + '. Sus tareas se consultan en Proyectos y Calendario.' : selectableProjects.length ? 'Puedes crear un proyecto sin perder esta tarea.' : 'Crea tu primer proyecto para asociar esta tarea.'}</p>
             <button type="button" className="inline-create" onClick={() => openProject()}>＋ Crear proyecto</button>
           </div>}
+          {draft.taskType === 'project' && selectedProject && <label>Funcionalidad<select name="feature" value={draft.featureId || ''} onChange={event => { setTaskError(''); setDraft({ ...draft, featureId: event.target.value || null }) }}>
+            <option value="">Sin funcionalidad</option>
+            {features.filter(feature => feature.project_id === selectedProject.id).sort((a, b) => a.name.localeCompare(b.name, 'es')).map(feature => <option key={feature.id} value={feature.id}>{feature.name}</option>)}
+          </select></label>}
           {!selectedRoutine && <label>{draft.taskType === 'routine' ? 'Fecha inicial' : draft.taskType === 'project' ? 'Fecha (opcional)' : 'Fecha'}<input name="date" type="date" required={draft.taskType !== 'project'} value={draft.date} onChange={e => { setTaskError(''); setDraft({ ...draft, date: e.target.value }) }} /></label>}
         </div>
         {draft.date && draft.taskType !== 'routine' && <label className="completed-toggle"><input type="checkbox" checked={draft.allDay} onChange={e => setDraft({ ...draft, allDay: e.target.checked })} /><span>Todo el día</span></label>}
@@ -1028,8 +1124,17 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
       {deleteTaskError && <p className="form-error" role="alert">{deleteTaskError}</p>}
       <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setTaskToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
     </FormDialog>}
+    {featureDialog && <FormDialog className="feature-modal" title={featureDialog.mode === 'delete' ? 'Eliminar funcionalidad' : featureDialog.feature ? 'Editar funcionalidad' : 'Nueva funcionalidad'} busy={modalBusy} initialFocus={featureDialog.mode === 'delete' ? '[data-cancel-feature]' : undefined} onClose={() => setFeatureDialog(undefined)} onSubmit={() => void submitFeature()}>
+      {featureDialog.mode === 'delete' ? <p className="delete-task-prompt">¿Eliminar «{featureDialog.feature.name}»? Se quitarán sus conexiones con otras funcionalidades. Sus tareas pasarán a «Sin funcionalidad» y conservarán sus conexiones.</p>
+        : <fieldset className="form-fields" disabled={modalBusy}>
+          <label>Nombre<input name="name" required value={featureDialog.name} onChange={event => { setFeatureError(''); setFeatureDialog({ ...featureDialog, name: event.target.value }) }} /></label>
+          <label>Descripción (opcional)<textarea name="description" rows={3} value={featureDialog.description} onChange={event => { setFeatureError(''); setFeatureDialog({ ...featureDialog, description: event.target.value }) }} /></label>
+        </fieldset>}
+      {featureError && <p className="form-error" role="alert">{featureError}</p>}
+      <div className="modal-actions"><button type="button" className="cancel" data-cancel-feature disabled={modalBusy} onClick={() => setFeatureDialog(undefined)}>Cancelar</button><button type="submit" className={featureDialog.mode === 'delete' ? 'confirm-delete' : 'save'} disabled={modalBusy}>{featureDialog.mode === 'delete' ? modalBusy ? 'Eliminando…' : 'Eliminar funcionalidad' : modalBusy ? 'Guardando…' : 'Guardar funcionalidad'}</button></div>
+    </FormDialog>}
     {projectToDelete && <FormDialog className="delete-project-modal" title="Eliminar proyecto" busy={modalBusy} initialFocus="[data-cancel-delete]" onClose={() => { if (!modalBusy) setProjectToDelete(null) }} onSubmit={() => void confirmDeleteProject()}>
-      <p className="delete-task-prompt">¿Eliminar «{projectToDelete.name}»? Se eliminarán todas sus tareas, incluidas las completadas, y sus conexiones. Esta acción no se puede deshacer.</p>
+      <p className="delete-task-prompt">¿Eliminar «{projectToDelete.name}»? Se eliminarán sus funcionalidades y todas sus tareas, incluidas las completadas, junto con sus conexiones. Esta acción no se puede deshacer.</p>
       {deleteProjectError && <p className="form-error" role="alert">{deleteProjectError}</p>}
       <div className="modal-actions"><button type="button" className="cancel" data-cancel-delete disabled={modalBusy} onClick={() => setProjectToDelete(null)}>Cancelar</button><button type="submit" className="confirm-delete" disabled={modalBusy}>{modalBusy ? 'Eliminando…' : 'Eliminar'}</button></div>
     </FormDialog>}

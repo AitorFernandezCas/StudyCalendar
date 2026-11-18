@@ -2,6 +2,58 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { movePlanPosition, planLayout, relatedTaskIds, unfinishedPrerequisites } from '../src/lib/projectPlan.ts'
 import { visibleOverviewTasks } from '../src/lib/projectVisibility.ts'
+import { featureBranch, featureGraphEdges, featureGraphNodes, featureLayoutNodes } from '../src/lib/featureGraph.ts'
+
+test('saved and inferred arrows merge without letting inferred cycles reverse the planned layout', () => {
+  const nodes = featureGraphNodes([
+    { featureId: 'a', name: 'Análisis', tasks: [{ id: 'a1' }, { id: 'a2', prerequisiteIds: ['b1'] }] },
+    { featureId: 'b', name: 'Entrega', tasks: [{ id: 'b1', prerequisiteIds: ['a1'] }] },
+    { featureId: 'c', name: 'Aparte', tasks: [] },
+  ])
+  const link = { id: 'link', project_id: 'p', source_feature_id: 'a', target_feature_id: 'b' }
+  const edges = featureGraphEdges(nodes, [link])
+  assert.deepEqual(edges, [
+    { source: 'a', target: 'b', inferred: true, saved: link },
+    { source: 'b', target: 'a', inferred: true },
+  ])
+  assert.deepEqual(featureBranch('a', edges), new Set(['a', 'b']))
+  const layout = new Map(planLayout(featureLayoutNodes(nodes, edges)).map(node => [node.task.id, node.x]))
+  assert.ok(layout.get('a') < layout.get('b'))
+  assert.deepEqual(featureGraphEdges(nodes, []).find(edge => edge.source === 'a'), { source: 'a', target: 'b', inferred: true })
+})
+
+test('feature graph aggregates cross-feature links and keeps ungrouped work and empty features', () => {
+  const groups = [
+    { featureId: 'a', name: 'Preparación', tasks: [
+      { id: 'a1', done: true },
+      { id: 'a2', prerequisiteIds: ['a1', 'outside'] },
+    ] },
+    { featureId: 'b', name: 'Entrega', tasks: [
+      { id: 'b1', prerequisiteIds: ['a1', 'a2', 'missing'] },
+      { id: 'b2', prerequisiteIds: ['a1'] },
+    ] },
+    { featureId: 'empty', name: 'Seguimiento', tasks: [] },
+    { featureId: null, name: 'Sin funcionalidad', tasks: [{ id: 'outside' }] },
+  ]
+  const nodes = featureGraphNodes(groups)
+  assert.deepEqual(nodes.map(node => [node.id, node.prerequisiteIds]), [
+    ['a', ['ungrouped']], ['b', ['a']], ['empty', []], ['ungrouped', []],
+  ])
+  assert.deepEqual(nodes.map(node => [node.completed, node.total]), [[1, 2], [0, 2], [0, 0], [0, 1]])
+  assert.equal(nodes[3].featureId, null)
+  const byId = new Map(planLayout(nodes).map(node => [node.task.id, node]))
+  assert.ok(byId.get('ungrouped').x < byId.get('a').x && byId.get('a').x < byId.get('b').x)
+})
+
+test('reciprocal feature links preserve both directions without a task cycle', () => {
+  const groups = [
+    { featureId: 'a', name: 'Preparación', tasks: [{ id: 'a1' }, { id: 'a2', prerequisiteIds: ['b1'] }] },
+    { featureId: 'b', name: 'Entrega', tasks: [{ id: 'b1', prerequisiteIds: ['a1'] }] },
+  ]
+  const nodes = featureGraphNodes(groups)
+  assert.deepEqual(nodes.map(node => node.prerequisiteIds), [['b'], ['a']])
+  assert.deepEqual(planLayout(nodes), planLayout(featureGraphNodes([...groups].reverse())))
+})
 
 test('branches merge after all parents and retain positions across input order', () => {
   const tasks = [

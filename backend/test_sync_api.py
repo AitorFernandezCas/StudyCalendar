@@ -6,6 +6,7 @@ from postgrest import SyncPostgrestClient
 from studycalendar.config import Settings
 from studycalendar.dependencies import Dependencies
 from studycalendar.factory import create_app
+from studycalendar.projects.adapters.supabase import SupabaseFeatureRepository
 from studycalendar.sync.adapters.supabase import SupabaseSyncGateway
 from tests_support import DatabaseProvider, FixedAuth, FixedClock
 
@@ -51,3 +52,40 @@ def test_missing_sync_contract_is_a_distinct_unavailable_response():
         client = create_app(Settings(), Dependencies(FixedAuth(), Provider(), FixedClock())).test_client()
         response = client.get('/api/sync/snapshot', headers={'Authorization': 'Bearer test-token'})
         assert response.status_code == 503 and response.json['sync_unavailable'] is True
+
+
+def test_feature_http_patch_uses_scoped_revision_and_preserves_omitted_name():
+    identifier = '22222222-2222-4222-8222-222222222222'
+    project = '33333333-3333-4333-8333-333333333333'
+    previous = {'id': identifier, 'project_id': project, 'name': 'Entrega', 'description': 'Borrador'}
+    base = {'revision': 12, 'state': previous}
+
+    def respond(request):
+        if request.url.path.endswith('/sync_entities'):
+            assert request.url.params['entity'] == 'eq.project_features'
+            assert request.url.params['id'] == 'eq.' + identifier
+            return httpx.Response(200, json=[base])
+        assert request.url.path.endswith('/rpc/sync_apply')
+        assert request.headers['content-profile'] == 'Task'
+        operation = json.loads(request.read())['p_operation']
+        assert operation['entity'] == 'project_features'
+        assert operation['action'] == 'update'
+        assert operation['base'] == base
+        assert operation['changes'] == {'description': None}
+        return httpx.Response(200, json={'status': 'applied', 'row': {**previous, 'description': None}})
+
+    with httpx.Client(transport=httpx.MockTransport(respond), trust_env=False) as transport:
+        db = SyncPostgrestClient('https://example.invalid/rest/v1', schema='Task', http_client=transport)
+
+        class Provider:
+            @contextmanager
+            def scope(self, token, user):
+                with DatabaseProvider(db).scope(token, user) as repositories:
+                    yield replace(repositories, features=SupabaseFeatureRepository(db))
+
+        client = create_app(Settings(), Dependencies(FixedAuth(), Provider(), FixedClock())).test_client()
+        path = '/api/project-features/' + identifier
+        assert client.patch(path, json={'description': None}).status_code == 401
+        response = client.patch(path, headers={'Authorization': 'Bearer test-token'}, json={'description': None})
+        assert response.status_code == 200
+        assert response.json == {**previous, 'description': None}
