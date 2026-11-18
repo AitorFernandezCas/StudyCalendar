@@ -45,7 +45,7 @@ export function readPlanPositions(key: string): Record<string, PlanPosition> {
   } catch { return {} }
 }
 
-export function planLayout(tasks: Task[], heights: Record<string, number> = {}) {
+export function planLayout<T extends Pick<Task, 'id' | 'title' | 'prerequisiteIds'>>(tasks: T[], heights: Record<string, number> = {}) {
   const byId = new Map(tasks.map(task => [task.id, task]))
   const levels = new Map<string, number>()
   const visiting = new Set<string>()

@@ -53,14 +53,14 @@ def main():
       create schema auth; create table auth.users(id uuid primary key);
       create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
       grant usage on schema auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated;''')
+    migration = next((ROOT / 'supabase/migrations').glob('*_offline_sync.sql'))
     for path in sorted((ROOT / 'supabase/migrations').glob('*.sql')):
-        if path.name.startswith('202610040002') or path.name.endswith('_offline_sync.sql'):
+        if path.name.startswith('202610040002') or path.name >= migration.name:
             continue
         run(container, path.read_text(encoding='utf-8-sig'))
     # Existing data and its exact values must survive the new migration.
     run(container, f"insert into auth.users values('{USER}'),('{OTHER}'); insert into \"Task\".tasks(id,user_id,title,date,start_time,end_time,color,task_type,all_day) values('{TASK}','{USER}','Antes','2026-11-13','09:00','10:00','#4F46E5','daily',true);")
     before = run(container, 'select to_jsonb(t) from "Task".tasks t')
-    migration = next((ROOT / 'supabase/migrations').glob('*_offline_sync.sql'))
     migration_sql=migration.read_text(encoding='utf-8-sig')
     if args.debug_sql:
         migration_sql=migration_sql.replace("diagnostic:='La combinación no cumple las reglas. Revisa títulos, nombres, fechas, horarios y asociaciones.'", "diagnostic:=SQLSTATE||':'||SQLERRM")
@@ -155,7 +155,37 @@ def main():
     run(container,f"insert into \"Task\".routine_completion(routine_id,user_id,occurrence_date,completed) select '{historic_id}','{USER}',current_date-i,true from generate_series(0,1500) i")
     count=run(container,f"set role authenticated; select set_config('request.jwt.claim.sub','{USER}',false); select jsonb_array_length(\"Task\".sync_snapshot()->'data'->'routine_completion')")
     assert int(count.splitlines()[-1])>=1501
-    print('Passed: migration preservation, receipts, field merge/conflicts/resolution, validation rollback, RLS, guarded legacy writes, protected ledger, real two-connection serialization, atomic project deletion, tombstones and historical habit context.')
+    for pattern in ('*_project_features.sql', '*_project_feature_links.sql'):
+        path = next((ROOT / 'supabase/migrations').glob(pattern))
+        run(container, path.read_text(encoding='utf-8-sig'))
+    linked_project, a, b = (str(uuid.uuid4()) for _ in range(3))
+    assert call(container, operation('projects', 'create', linked_project, changes={'name': 'Plan de prueba'}))['status'] == 'applied'
+    for feature_id, name in ((a, 'A'), (b, 'B')):
+        assert call(container, operation('project_features', 'create', feature_id,
+                                         changes={'project_id': linked_project, 'name': name}))['status'] == 'applied'
+
+    def feature_edge(source, target):
+        return operation('project_feature_links', 'create', str(uuid.uuid4()), changes={
+            'project_id': linked_project, 'source_feature_id': source, 'target_feature_id': target,
+        })
+
+    first, second = feature_edge(a, b), feature_edge(b, a)
+    def hold_feature_edge():
+        sql = (f"begin; set role authenticated; select set_config('request.jwt.claim.sub','{USER}',true); "
+               f"select \"Task\".sync_apply($op${json.dumps(first)}$op$); select pg_sleep(1); commit;")
+        return next(json.loads(line) for line in run(container, sql).splitlines() if line.startswith('{'))
+
+    # Each edge would succeed on its own. The two-session race may commit only one.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        held = pool.submit(hold_feature_edge)
+        time.sleep(.2)
+        started = time.monotonic()
+        result = call(container, second)
+        assert time.monotonic() - started > .5, 'Feature writes did not overlap'
+        assert held.result()['status'] == 'applied'
+    assert result['status'] == 'rejected' and 'ciclo' in result['message'], result
+    assert run(container, 'select count(*) from "Task".project_feature_links') == '1'
+    print('Passed: migration preservation, receipts, field merge/conflicts/resolution, validation rollback, RLS, guarded legacy writes, protected ledger, real two-connection serialization, atomic project deletion, tombstones, historical habit context and concurrent feature-cycle prevention.')
 
 
 if __name__ == '__main__':

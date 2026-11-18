@@ -16,7 +16,7 @@ async function transport(path: string, session: Session, options?: RequestInit) 
 }
 
 export async function readSynced(path: string, session: Session, signal?: AbortSignal): Promise<unknown | undefined> {
-  if (!/^\/api\/(settings|routines|projects|categories|tasks|calendar|bootstrap)(\?|$)/.test(path)) return undefined
+  if (!/^\/api\/(settings|routines|projects|project-features|categories|tasks|calendar|bootstrap)(\?|$)/.test(path)) return undefined
   const { response, body } = await transport('/api/sync/snapshot', session, { signal })
   if (response.status === 404 || (response.status === 503 && body.sync_unavailable)) { enabled.delete(session.user.id); return undefined }
   if (!response.ok) throw new ApiError(body.error || 'No se pudieron actualizar los datos.', response.status)
@@ -32,15 +32,18 @@ export async function readSynced(path: string, session: Session, signal?: AbortS
   const params = new URLSearchParams(path.split('?')[1])
   const ranged = tasks.filter(row => (!params.get('from') || (row.date && String(row.date) >= params.get('from')!)) && (!params.get('to') || (row.date && String(row.date) <= params.get('to')!)))
   const projects = [...snapshot.data.projects].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
+  const features = snapshot.data.project_features || []
+  const featureLinks = snapshot.data.project_feature_links ?? null
   const categories = [...snapshot.data.category].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
   switch (path.split('?')[0]) {
     case '/api/settings': return { ...settings, _sync: settingsBase || { revision: 0, state: { ...settings, timezone: undefined } } }
     case '/api/routines': return { ...snapshot.day, routines }
     case '/api/projects': return { projects }
+    case '/api/project-features': return { features }
     case '/api/categories': return categories
     case '/api/tasks': return ranged
     case '/api/calendar': return { tasks: ranged }
-    case '/api/bootstrap': return { tasks: ranged, projects, categories }
+    case '/api/bootstrap': return { tasks: ranged, projects, categories, features, feature_links: featureLinks }
   }
 }
 
@@ -69,16 +72,21 @@ export async function sendSync(session: Session, intent: Omit<SyncOperation, 'pr
   if (!['applied', 'conflict', 'rejected'].includes(result.status)) throw new ApiError('Respuesta de sincronización no válida.', 502)
   sessionStorage.removeItem(key)
   if (result.status !== 'applied') {
-    window.dispatchEvent(new CustomEvent<SyncConflict>('studycalendar-sync-conflict', { detail: { userId: session.user.id, operation, result } }))
+    if (result.status === 'conflict' || !['project_features', 'project_feature_links'].includes(operation.entity)) {
+      window.dispatchEvent(new CustomEvent<SyncConflict>('studycalendar-sync-conflict', { detail: { userId: session.user.id, operation, result } }))
+    }
     throw new ApiError(result.message || 'Hay cambios simultáneos. Revisa el conflicto antes de continuar.', 409)
   }
   return result
 }
 
 export async function mutateSynced(path: string, session: Session, options: RequestInit, base?: SyncBase): Promise<unknown | undefined> {
-  const match = path.match(/^\/api\/(tasks|projects|categories|routines|settings)(?:\/([^/]+))?(\/completion)?$/)
+  const match = path.match(/^\/api\/(tasks|projects|project-features|project-feature-links|categories|routines|settings)(?:\/([^/]+))?(\/completion)?$/)
   if (!match || (!base && !enabled.has(session.user.id))) return undefined
-  const entity = ({ categories: 'category', routines: 'routine', settings: 'user_settings' } as Record<string, string>)[match[1]] || match[1]
+  const entity = ({
+    categories: 'category', routines: 'routine', settings: 'user_settings',
+    'project-features': 'project_features', 'project-feature-links': 'project_feature_links',
+  } as Record<string, string>)[match[1]] || match[1]
   const raw = options.body ? JSON.parse(String(options.body)) as Record<string, unknown> : {}
   const action = match[3] ? 'complete' : options.method === 'DELETE' ? 'delete' : options.method === 'POST' ? 'create' : 'update'
   if (action !== 'create' && !base) throw new ApiError('Actualiza los datos antes de editar. El borrador se conserva.', 409)

@@ -19,7 +19,7 @@ from studycalendar.shared.clock import SystemClock
 from studycalendar.shared.domain import User, DuplicateName
 from studycalendar.tasks.domain import Task
 from studycalendar.categories.domain import Category
-from studycalendar.projects.domain import Project
+from studycalendar.projects.domain import Project, ProjectFeature, ProjectFeatureLink
 from studycalendar.routines.domain import Routine, RoutineSummary, Period
 from studycalendar.preferences.domain import Preferences
 
@@ -28,7 +28,7 @@ class Store:
     def __init__(self):
         self.lock = RLock()
         self.preferences = {}
-        self.rows = {name: {} for name in ("tasks", "categories", "projects", "routines", "periods", "completions")}
+        self.rows = {name: {} for name in ("tasks", "categories", "projects", "features", "feature_links", "routines", "periods", "completions")}
 
 
 class Repository:
@@ -50,14 +50,20 @@ class Repository:
     def belongs_to(self, identifier, user_id):
         return identifier in self.rows and self.rows[identifier]["user_id"] == user_id
 
+    def belongs_to_project(self, identifier, project_id, user_id):
+        return self.belongs_to(identifier, user_id) and self.rows[identifier]["project_id"] == project_id
+
     def check_name(self, payload, identifier=None):
-        if self.name in ("categories", "projects") and "name" in payload:
-            if any(key != identifier and row["name"].lower() == payload["name"].lower() for key, row in self.rows.items()):
+        if self.name in ("categories", "projects", "features") and "name" in payload:
+            project_id = payload.get("project_id", self.rows.get(identifier, {}).get("project_id"))
+            if any(key != identifier and row.get("project_id") == project_id and row["name"].lower() == payload["name"].lower() for key, row in self.rows.items()):
                 raise DuplicateName()
 
     def create(self, payload):
         self.check_name(payload)
-        row = {"id": str(uuid4()), "color": "#7c5cff", **payload}
+        row = {"id": str(uuid4()), **payload}
+        if self.name != "features":
+            row.setdefault("color", "#7c5cff")
         if self.name == "tasks":
             row = {"category_id": None, "project_id": None, "task_type": "daily", "completed": False, "all_day": False, **row}
         if self.name in ("projects", "routines"):
@@ -78,10 +84,18 @@ class Repository:
         if self.rows.pop(identifier, None) is None:
             return False
         if self.name == "projects":
+            features = self.store.rows["features"]
+            for key in [key for key, row in features.items() if row["project_id"] == identifier]:
+                del features[key]
             for key in list(self.store.rows["tasks"]):
                 if self.store.rows["tasks"][key].get("project_id") == identifier:
                     del self.store.rows["tasks"][key]
-        association = {"categories": "category_id"}.get(self.name)
+        if self.name in ("projects", "features"):
+            links = self.store.rows["feature_links"]
+            keys = ("project_id",) if self.name == "projects" else ("source_feature_id", "target_feature_id")
+            for key in [key for key, row in links.items() if any(row[field] == identifier for field in keys)]:
+                del links[key]
+        association = {"categories": "category_id", "features": "feature_id"}.get(self.name)
         if association:
             for task in self.store.rows["tasks"].values():
                 if task.get(association) == identifier:
@@ -95,6 +109,20 @@ class Repository:
         for task in self.store.rows["tasks"].values():
             if task["category_id"] == identifier:
                 task["color"] = color
+
+
+class Features(Repository):
+    def list_links(self, project_id=None):
+        return [ProjectFeatureLink.from_record(dict(row)) for row in self.store.rows["feature_links"].values()
+                if project_id is None or row["project_id"] == project_id]
+
+    def create_link(self, payload):
+        row = {"id": str(uuid4()), **payload}
+        self.store.rows["feature_links"][row["id"]] = row
+        return ProjectFeatureLink.from_record(row)
+
+    def delete_link(self, identifier):
+        return self.store.rows["feature_links"].pop(identifier, None) is not None
 
 
 class Routines(Repository):
@@ -186,7 +214,8 @@ class Provider:
         with self.store.lock:
             routines = Routines(self.store, "routines", Routine)
             yield Repositories(Repository(self.store, "tasks", Task), Repository(self.store, "categories", Category),
-                               Repository(self.store, "projects", Project), routines, routines, Activity(self.store), MemoryPreferences(self.store, user))
+                               Repository(self.store, "projects", Project), routines, routines, Activity(self.store),
+                               MemoryPreferences(self.store, user), features=Features(self.store, "features", ProjectFeature))
 
 
 def demo_app():

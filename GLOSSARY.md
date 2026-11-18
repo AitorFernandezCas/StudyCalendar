@@ -5,8 +5,23 @@ StudyCalendar organizes daily tasks, project work, and daily habits. These terms
 ## Language
 
 **Project plan (plan del proyecto)**:
-The project's existing tasks and the prerequisite relationships between them. Each project has one plan, whose relationships stay within that project.
+The project's existing tasks and the prerequisite relationships between them. Feature plans organize portions of this work; prerequisite relationships stay within the project.
 _Avoid_: Separate plan tasks, plan template
+
+**Feature (funcionalidad)**:
+A named piece of work within one project that groups project tasks. A task may belong to one feature or remain ungrouped within its project.
+_Avoid_: Tag, branch
+
+**Feature plan (plan de funcionalidad)**:
+The tasks assigned to a feature and their prerequisite relationships, including prerequisites in other features or ungrouped work within the same project. These are the same tasks and completion history used throughout the project.
+_Avoid_: Task copies, alternative plan
+
+**Feature prerequisite (funcionalidad previa)**:
+A feature that precedes another feature in the same project's plan. Task prerequisites govern whether an individual task can be completed.
+
+**Ungrouped project work (sin funcionalidad)**:
+Tasks belonging to a project but not assigned to any feature within it.
+_Avoid_: Sin proyecto, unscheduled task
 
 **Prerequisite task (tarea previa)**:
 A task whose completion is required before a dependent task can be completed. A dependent task can have several prerequisite tasks, all of which are required.

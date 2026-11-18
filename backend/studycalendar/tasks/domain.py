@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import date, time
 from types import MappingProxyType
 from typing import Any
+from ..projects.domain import parse_feature_id
 from ..shared.domain import Model, Command, BusinessError
 
 
@@ -19,10 +20,13 @@ class Task(Model):
     completed: bool = False
     all_day: bool = False
     prerequisite_ids: list[str] = field(default_factory=list)
+    feature_id: str | None = None
 
 
 def task_command(raw: Any, creating: bool = False) -> Command:
-    body = Command.parse(raw, {"title", "category_id", "project_id", "task_type", "date", "start_time", "end_time", "color", "completed", "all_day", "prerequisite_ids"}).payload()
+    body = Command.parse(raw, {"title", "category_id", "project_id", "feature_id", "task_type", "date", "start_time", "end_time", "color", "completed", "all_day", "prerequisite_ids"}).payload()
+    if body.get("feature_id") is not None:
+        body["feature_id"] = parse_feature_id(body["feature_id"])
     if "prerequisite_ids" in body:
         ids = body["prerequisite_ids"]
         if not isinstance(ids, list) or any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids):

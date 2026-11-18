@@ -5,7 +5,9 @@ export type { SyncBase } from './syncApi'
 export type ApiCategory = { _sync?: SyncBase; id: string; name: string; color: string }
 export type ProjectStatus = 'active' | 'inactive' | 'completed'
 export type ApiProject = { _sync?: SyncBase; id: string; name: string; color: string; status: ProjectStatus; created_at: string; updated_at: string }
-export type ApiTask = { _sync?: SyncBase; id: string; title: string; category_id: string | null; project_id: string | null; task_type: 'routine' | 'project' | 'daily'; date: string | null; start_time: string | null; end_time: string | null; prerequisite_ids?: string[]; all_day: boolean; color: string; completed: boolean }
+export type ApiFeature = { _sync?: SyncBase; id: string; project_id: string; name: string; description: string | null }
+export type ApiFeatureLink = { _sync?: SyncBase; id: string; project_id: string; source_feature_id: string; target_feature_id: string }
+export type ApiTask = { _sync?: SyncBase; id: string; title: string; category_id: string | null; project_id: string | null; feature_id?: string | null; task_type: 'routine' | 'project' | 'daily'; date: string | null; start_time: string | null; end_time: string | null; prerequisite_ids?: string[]; all_day: boolean; color: string; completed: boolean }
 export type ApiRoutine = { _sync?: SyncBase; id: string; title: string; color: string; active: boolean; created_at: string; updated_at: string; due_today: boolean; completed_today: boolean; current_streak: number; max_streak: number }
 export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; day_started_at: string; routines: ApiRoutine[] }
 export type ApiSettings = { _sync?: SyncBase; routine_reset_time: string; calendar_start_time: string; calendar_end_time: string; week_start: 'monday' | 'sunday'; timezone: string }
@@ -16,7 +18,7 @@ export const settingsApi = {
   update: (session: Session, changes: SettingsChanges, base?: SyncBase) => request<ApiSettings>('/api/settings', session, { method: 'PATCH', body: JSON.stringify(changes) }, base),
 }
 export type ApiRoutineCompletion = Omit<ApiRoutineSnapshot, 'routines'> & { routine: ApiRoutine }
-export type ApiBootstrap = { categories: ApiCategory[]; projects: ApiProject[]; tasks: ApiTask[] }
+export type ApiBootstrap = { categories: ApiCategory[]; projects: ApiProject[]; tasks: ApiTask[]; features?: ApiFeature[]; feature_links?: ApiFeatureLink[] | null }
 export type ApiActivityDay = { date: string; total: number; completed: number; status: 'complete' | 'pending' | 'future' | 'empty' }
 export type ApiActivitySnapshot = { year: number; date: string; timezone: string; next_day_at: string; days: ApiActivityDay[] }
 
@@ -58,6 +60,18 @@ export const tasksApi = {
   create: (session: Session, task: Omit<ApiTask, 'id'>) => request<ApiTask>('/api/tasks', session, { method: 'POST', body: JSON.stringify(task) }),
   update: (session: Session, id: string, task: Partial<Omit<ApiTask, 'id'>>, base?: SyncBase) => request<ApiTask>(`/api/tasks/${id}`, session, { method: 'PATCH', body: JSON.stringify(task) }, base),
   remove: (session: Session, id: string, base?: SyncBase) => request<{ deleted: string }>(`/api/tasks/${id}`, session, { method: 'DELETE' }, base),
+}
+
+type FeatureDetails = Pick<ApiFeature, 'name' | 'description'>
+export const featuresApi = {
+  create: (session: Session, feature: FeatureDetails & { project_id: string }) => request<ApiFeature>('/api/project-features', session, { method: 'POST', body: JSON.stringify(feature) }),
+  update: (session: Session, id: string, feature: FeatureDetails, base?: SyncBase) => request<ApiFeature>(`/api/project-features/${id}`, session, { method: 'PATCH', body: JSON.stringify(feature) }, base),
+  remove: (session: Session, id: string, base?: SyncBase) => request<{ deleted: string }>(`/api/project-features/${id}`, session, { method: 'DELETE' }, base),
+}
+
+export const featureLinksApi = {
+  create: (session: Session, link: Omit<ApiFeatureLink, 'id' | '_sync'>) => request<ApiFeatureLink>('/api/project-feature-links', session, { method: 'POST', body: JSON.stringify(link) }),
+  remove: (session: Session, link: ApiFeatureLink) => request<{ deleted: string }>(`/api/project-feature-links/${link.id}`, session, { method: 'DELETE' }, link._sync),
 }
 
 export const routinesApi = {

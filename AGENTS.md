@@ -122,3 +122,7 @@ The approved behavior is specified in `docs/project-planning.md`. `frontend/src/
 `prerequisite_ids` belong to the task's project. All prerequisites must be complete before completion; reopening requires reopening completed dependents first. Reject cycles, self-links, cross-project links, and adding unfinished prerequisites to completed tasks. Individual deletion, reassignment, or conversion to daily requires removing links first. Deleting a project removes all its tasks and links atomically. Core rules live in `tasks/planning.py`; PostgreSQL triggers serialize project writes and enforce the same rules for direct API/database callers. Keep task reads paginated so dependency validation is not truncated.
 
 `20261106122252_project_plans.sql` was applied to the shared database on 2026-11-06 after backup confirmation and isolated checks. Test with `backend/test_project_plans.sql` against an isolated database before this migration; the script rolls back. `frontend/scripts/test-project-plans-db.mjs` is an optional PGlite runner. Migration must precede this backend/frontend version. Follow DEPLOYMENT.md for backup and coordinated rollout.
+
+### Feature plans
+
+For feature management, task assignment, and feature diagrams, read `docs/feature-planning.md`. Scope diagram nodes and layouts to the selected feature, and validate dependencies against the full project graph. Preserve sparse protocol 1 task edits for Android and use the migration order in `DEPLOYMENT.md`.

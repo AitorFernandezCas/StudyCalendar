@@ -14,7 +14,7 @@ from supabase.client import ClientOptions
 from ..config import Settings
 from ..dependencies import Repositories
 from ..categories.adapters.supabase import SupabaseCategoryRepository
-from ..projects.adapters.supabase import SupabaseProjectRepository
+from ..projects.adapters.supabase import SupabaseFeatureRepository, SupabaseProjectRepository
 from ..tasks.adapters.supabase import SupabaseTaskRepository
 from ..routines.adapters.supabase import SupabaseRoutineRepository, SupabaseRoutineSummaries
 from ..queries.adapters.supabase import SupabaseActivityRepository
@@ -146,6 +146,7 @@ class SupabaseRuntime:
                 SupabaseActivityRepository(database, user),
                 SupabasePreferencesRepository(database, user),
                 SupabaseSyncGateway(database),
+                SupabaseFeatureRepository(database),
             )
 
     def close(self) -> None:

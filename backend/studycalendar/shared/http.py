@@ -4,7 +4,7 @@ from functools import wraps
 from contextlib import ExitStack
 from flask import current_app, g, jsonify, request
 from ..categories.application import CategoryService
-from ..projects.application import ProjectService
+from ..projects.application import FeatureService, ProjectService
 from ..tasks.application import TaskService
 from ..routines.application import RoutineService
 from ..queries.application import QueryService
@@ -35,6 +35,7 @@ class Services:
     routines: RoutineService
     queries: QueryService
     preferences: PreferencesService
+    features: FeatureService
 
 
 def services():
@@ -63,12 +64,13 @@ def require_user(view):
             clock = dependencies.clock
             g.sync = SyncService(repositories.sync, user)
             g.services = Services(
-                TaskService(repositories.tasks, repositories.categories, repositories.projects, user, clock),
+                TaskService(repositories.tasks, repositories.categories, repositories.projects, user, clock, repositories.features),
                 CategoryService(repositories.categories, user, repositories.tasks),
                 ProjectService(repositories.projects, user),
                 RoutineService(repositories.routines, repositories.summaries, user, clock, repositories.preferences),
-                QueryService(repositories.tasks, repositories.categories, repositories.projects, clock, repositories.activity),
+                QueryService(repositories.tasks, repositories.categories, repositories.projects, clock, repositories.activity, repositories.features),
                 PreferencesService(repositories.preferences, user, current_app.extensions["studycalendar.settings"].timezone),
+                FeatureService(repositories.features, repositories.projects, user),
             )
             return view(*args, **kwargs)
     return wrapped

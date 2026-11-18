@@ -58,3 +58,49 @@ test('account mismatch is rejected and conflicts retain the original edit base',
   assert.equal(notice.operation.changes.title, 'Web')
   assert.equal(notice.result.remote.state.title, 'Móvil')
 })
+
+test('feature mutations use sync receipts and task membership can be explicitly cleared', async () => {
+  const data = snapshot()
+  const feature = { id: 'feature-fixture', project_id: 'project-fixture', name: 'Entrega', description: null }
+  const operations = []
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith('/snapshot')) return response(data)
+    const operation = JSON.parse(options.body)
+    operations.push(operation)
+    return response({ status: 'applied', row: { id: operation.id, ...operation.changes } })
+  }
+  assert.deepEqual((await api.readSynced('/api/bootstrap', session)).features, [])
+  data.data.project_features = [feature]
+  assert.deepEqual((await api.readSynced('/api/bootstrap', session)).features, [feature])
+  await api.mutateSynced('/api/project-features', session, {
+    method: 'POST', body: JSON.stringify({ name: feature.name, project_id: feature.project_id, description: null }),
+  })
+  assert.equal(operations[0].entity, 'project_features')
+  const base = { revision: 12, state: { title: 'Título', feature_id: feature.id } }
+  await api.mutateSynced('/api/tasks/task-fixture', session, {
+    method: 'PATCH', body: JSON.stringify({ title: 'Título', feature_id: null }),
+  }, base)
+  assert.deepEqual(operations[1].changes, { feature_id: null })
+  assert.deepEqual(operations[1].base, base)
+})
+
+test('feature links use their own sync entity and retain the removal base', async () => {
+  const data = snapshot()
+  const base = { revision: 13, state: { project_id: 'project-fixture', source_feature_id: 'from', target_feature_id: 'to' } }
+  const link = { id: 'link-fixture', ...base.state, _sync: base }
+  const operations = []
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith('/snapshot')) return response(data)
+    const op = JSON.parse(options.body)
+    operations.push(op)
+    return response({ status: 'applied', row: link, deleted: op.action === 'delete' ? op.id : null })
+  }
+  assert.equal((await api.readSynced('/api/bootstrap', session)).feature_links, null)
+  data.data.project_feature_links = [link]
+  assert.deepEqual((await api.readSynced('/api/bootstrap', session)).feature_links, [link])
+  await api.mutateSynced('/api/project-feature-links', session, { method: 'POST', body: JSON.stringify(base.state) })
+  assert.equal(operations[0].entity, 'project_feature_links')
+  assert.deepEqual(operations[0].changes, base.state)
+  assert.deepEqual(await api.mutateSynced('/api/project-feature-links/' + link.id, session, { method: 'DELETE' }, base), { deleted: link.id })
+  assert.deepEqual(operations[1].base, base)
+})

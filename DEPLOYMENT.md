@@ -452,3 +452,25 @@ El 2026-11-14 el usuario confirmó una copia privada reciente del esquema Task y
 - El asesor conserva el aviso previo de contraseñas filtradas y añade el aviso esperado de [función SECURITY DEFINER ejecutable por usuarios autenticados](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable) para `Task.sync_apply`. Su exposición es deliberada para la entrada transaccional con registros protegidos: identidad obtenida de `auth.uid()`, propiedad y campos validados, `search_path=pg_catalog`, denegación anónima y auxiliares privados. La justificación y las pruebas de aislamiento están en `docs/sync-protocol.md`; no se afirma ausencia de avisos nuevos.
 
 El usuario confirmó el 2026-11-14 que la tarea desechable creada desde el Poco aparece en la web: queda verificada la escritura autenticada móvil→Supabase→web en producción. Inicialmente notificó `Cannot read properties of null (reading 'slice')` al recargar; posteriormente confirmó que dejó de aparecer. No se reprodujo ni se atribuye una causa sin evidencia. El usuario también confirmó la comprobación inversa: editó el título en la web y lo recibió al actualizar el Poco. Los recibos de producción registran una creación y una edición de tarea con estado `applied`. Las pruebas de conflictos, pérdida de respuesta, concurrencia, eliminación y hábitos históricos pasaron en el dispositivo con transporte simulado y en PostgreSQL/PostgREST aislados; no se presentan como comprobadas manualmente en producción.
+
+## Planes por funcionalidad
+
+`20261118105622_project_features.sql` añade funcionalidades y la asignación opcional de tareas. Requiere `20261114133419_offline_sync.sql` y amplía el protocolo 1 de forma compatible con Android. Las tareas existentes empiezan en «Sin funcionalidad» y conservan su historial y conexiones.
+
+1. Confirmar una copia privada reciente y revisar la correspondencia del historial en `supabase/MIGRATION_HISTORY.md`. Ejecutar `node frontend/scripts/test-project-features-db.mjs` con PGlite instalado o con `PGLITE_MODULE` apuntando a su módulo. El script prueba la migración con datos desechables en memoria.
+2. Tras confirmar la copia y autorizar la migración, aplicar solo esa versión y comprobar RLS, permisos y recuentos. Verificar que los snapshots siguen devolviendo protocolo 1 con únicamente los datos de la cuenta. Mantener el historial compartido de otros proyectos.
+3. Publicar las versiones compatibles de backend y web después de que pase CI completa. En un proyecto desechable, crear una funcionalidad, asignar una tarea, sincronizar una edición de título desde Android y confirmar que conserva su funcionalidad. Eliminar la funcionalidad y comprobar que la tarea y sus conexiones siguen en «Sin funcionalidad».
+
+Si hace falta revertir el código después de publicar, conservar la migración aditiva y usar la versión previa compatible con el protocolo 1. Eliminar la columna o tabla perdería las asignaciones y sus datos.
+
+El 18 de noviembre de 2026 se aplicó solo esta migración al proyecto compartido tras la confirmación del usuario de una copia privada. El archivo local se renombró para coincidir con el registro remoto y mantuvo su SHA256. Coincidieron los recuentos y las huellas de los campos existentes en las siete tablas de StudyCalendar, incluidas las 52 tareas. La nueva tabla tiene RLS, lectura propia para `authenticated` y escrituras mediante el RPC de sincronización. Un snapshot con rol autenticado devolvió protocolo 1, la colección de funcionalidades y las tareas del propietario. El asesor de seguridad no añadió incidencias. La publicación en Render y la prueba desde un dispositivo Android siguen pendientes.
+
+## Conexiones entre funcionalidades
+
+`20261118223658_project_feature_links.sql` añade conexiones de planificación a partir de la migración de funcionalidades. Mantiene el protocolo 1 con una colección adicional. La interfaz mantiene la lectura del gráfico y sus posiciones en el navegador mientras la base no admita guardar conexiones.
+
+1. Ejecutar el runner aislado `frontend/scripts/test-project-features-db.mjs` y la comprobación de dos conexiones `backend/check_sync_db.py` en su contenedor desechable. Confirmar una copia privada y cotejar el historial remoto.
+2. Aplicar únicamente esta migración tras autorización, verificar RLS, permisos, protocolo 1 y conservación de tareas y funcionalidades, y luego publicar web y backend tras CI completa.
+3. En un proyecto desechable, comprobar creación, recarga y borrado de conexiones entre funcionalidades, conservación de flechas derivadas y ausencia de cambios en las reglas de completado de tareas.
+
+La migración se aplicó al proyecto compartido el 18 de noviembre de 2026 tras confirmar la copia privada. Coincidieron los recuentos y las huellas de las ocho tablas de StudyCalendar, incluidas las 53 tareas y la funcionalidad existente. Se verificaron RLS, permisos, la validación de ciclos activa y el snapshot autenticado del protocolo 1 con la colección de conexiones. El asesor de seguridad no añadió incidencias. La publicación en Render sigue pendiente.

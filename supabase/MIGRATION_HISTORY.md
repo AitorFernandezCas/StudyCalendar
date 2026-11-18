@@ -86,3 +86,15 @@ El historial remoto contiene además migraciones de FinanceTracker posteriores a
 El CLI 3.1.0 generó `20261113224726_offline_sync.sql`. Se aplicó solo esta migración tras confirmación de copia privada y autorización expresa del usuario, después del CI y los despliegues compatibles de la PR #26. Se renombró como `20261114133419_offline_sync.sql` para coincidir con la versión remota, sin cambiar el SQL (SHA256 `9AD2EC0C996DC9A5DECB5F70CBC6BBE4C4751F564BD990790F770A874C9EF7EA`). No reejecutarla ni reparar el historial anterior o las entradas de FinanceTracker.
 
 Las huellas completas y recuentos de las siete tablas de negocio coincidieron: 40 tareas, 4 proyectos, 4 categorías, 7 rutinas, 7 períodos, 44 completaciones y 1 preferencia. También se conservaron las 27 políticas originales y `routine_summaries`. Las tres tablas nuevas tienen RLS y solo SELECT propio para authenticated; no permiten escrituras directas ni acceso anónimo. `sync_snapshot` devolvió protocolo 1 con rol authenticated y todas las filas del propietario. El asesor señala la exposición deliberada de `sync_apply` como SECURITY DEFINER; su validación de identidad/propiedad, permisos restringidos y justificación se documentan en `docs/sync-protocol.md` y `DEPLOYMENT.md`.
+
+## Funcionalidades de proyectos — aplicada el 18 de noviembre de 2026
+
+La migración se probó en PostgreSQL aislado sobre `offline_sync` y se aplicó después de la confirmación de una copia privada. El conector registró la versión `20261118105622` con el nombre `project_features`. Se renombró el archivo original `20261118000759_project_features.sql` sin cambiar su SQL. SHA256: `3451A5ACD6C598DA7263E0972AE470A1CD3426B91F09214F2FD0607963314A8C`.
+
+El historial anterior y los datos existentes se conservaron. Las 52 tareas empezaron sin funcionalidad. Se verificaron RLS, el snapshot autenticado del protocolo 1 y la ausencia de nuevas incidencias del asesor de seguridad. Véase `DEPLOYMENT.md` para el despliegue web.
+
+## Conexiones entre funcionalidades — aplicada el 18 de noviembre de 2026
+
+El conector registró `project_feature_links` como `20261118223658`. El archivo local original `20261118221651_project_feature_links.sql` se renombró conservando su SQL y SHA256 `B9906537ADC8196A013B5DF1554FC51C31C66683EAFA9191116D3F6DBE98BAA7`.
+
+Se conservó el historial anterior y se verificaron los datos existentes, RLS, las restricciones de borrado y el snapshot autenticado. Véase `DEPLOYMENT.md` para la publicación web.

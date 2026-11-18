@@ -4,6 +4,10 @@ import { movePlanPosition, PLAN_NODE_HEIGHT, PLAN_NODE_WIDTH, planLayout, readPl
 
 type Props = {
   tasks: Task[]
+  projectTasks: Task[]
+  planName: string
+  groupName: (task: Task) => string
+  onOpenExternal: (task: Task) => void
   storageKey: string
   busy: boolean
   onEdit: (task: Task) => void
@@ -12,7 +16,7 @@ type Props = {
   onLinks: (task: Task, ids: string[]) => void
 }
 
-export function ProjectPlan({ tasks, storageKey, busy, onEdit, onToggle, onDelete, onLinks }: Props) {
+export function ProjectPlan({ tasks, projectTasks, planName, groupName, onOpenExternal, storageKey, busy, onEdit, onToggle, onDelete, onLinks }: Props) {
   const marker = useId().replace(/:/g, '')
   const [zoom, setZoom] = useState(1)
   const [connecting, setConnecting] = useState<string | null>(null)
@@ -26,6 +30,19 @@ export function ProjectPlan({ tasks, storageKey, busy, onEdit, onToggle, onDelet
   const positions = focusRootId ? branchPositions : savedPositions
   const setPositions = focusRootId ? setBranchPositions : setSavedPositions
   const focusRoot = tasks.find(task => task.id === focusRootId)
+  const groupIds = useMemo(() => new Set(tasks.map(task => task.id)), [tasks])
+  const projectById = useMemo(() => new Map(projectTasks.map(task => [task.id, task])), [projectTasks])
+  const dependentsById = useMemo(() => {
+    const result = new Map<string, Task[]>()
+    for (const task of projectTasks) {
+      for (const id of task.prerequisiteIds || []) {
+        const dependents = result.get(id) || []
+        dependents.push(task)
+        result.set(id, dependents)
+      }
+    }
+    return result
+  }, [projectTasks])
   const visibleTasks = useMemo(() => {
     if (!focusRootId) return tasks
     const ids = relatedTaskIds(tasks, focusRootId)
@@ -141,11 +158,11 @@ export function ProjectPlan({ tasks, storageKey, busy, onEdit, onToggle, onDelet
     onLinks(target, [...(target.prerequisiteIds || []), source])
   }
   const path = (x: number, y: number, endX: number, endY: number) => `M ${x} ${y} C ${x + 55} ${y}, ${endX - 55} ${endY}, ${endX} ${endY}`
-  return <section className="project-plan" aria-label="Plan visual del proyecto">
-    <div className="plan-toolbar">{focusRoot && <div className="plan-focus-summary"><div role="status"><strong>Rama de «{focusRoot.title}»</strong><span>{visibleTasks.length} de {tasks.length} tareas</span></div><button onClick={exitFocus}>Ver proyecto completo</button></div>}<div className="plan-zoom"><button aria-label="Alejar plan" onClick={() => setZoom(value => Math.max(.4, value - .15))}>−</button><output>{Math.round(zoom * 100)}%</output><button aria-label="Acercar plan" onClick={() => setZoom(value => Math.min(1.6, value + .15))}>＋</button><button onClick={resetView}>Restablecer vista</button><button onClick={arrange}>Organizar automáticamente</button></div></div>
+  if (!tasks.length) return <p className="overview-empty">Sin tareas</p>
+  return <section className="project-plan" aria-label={'Plan visual de ' + planName}>
+    <div className="plan-toolbar">{focusRoot && <div className="plan-focus-summary"><div role="status"><strong>Rama de «{focusRoot.title}»</strong><span>{visibleTasks.length} de {tasks.length} tareas</span></div><button onClick={exitFocus}>Ver plan completo</button></div>}<div className="plan-zoom"><button aria-label="Alejar plan" onClick={() => setZoom(value => Math.max(.4, value - .15))}>−</button><output>{Math.round(zoom * 100)}%</output><button aria-label="Acercar plan" onClick={() => setZoom(value => Math.min(1.6, value + .15))}>＋</button><button onClick={resetView}>Restablecer vista</button><button onClick={arrange}>Organizar automáticamente</button></div></div>
     <p className="plan-help">Pasa el cursor o enfoca una tarea para ver sus detalles. Arrastra las tarjetas para colocarlas libremente; usa las flechas en su control de movimiento. Conecta los puntos laterales para añadir tareas previas.</p>
-    {!tasks.length && <p className="overview-empty">Este proyecto aún no tiene tareas.</p>}
-    <div ref={viewport} className="plan-viewport" tabIndex={0} aria-label="Diagrama desplazable del proyecto" onPointerDown={event => {
+    <div ref={viewport} className="plan-viewport" tabIndex={0} aria-label={'Diagrama desplazable de ' + planName} onPointerDown={event => {
       if ((event.target as HTMLElement).closest('button,select,input,label,article')) return
       const view = viewport.current!
       pan.current = { x: event.clientX, y: event.clientY, left: view.scrollLeft, top: view.scrollTop }
@@ -167,9 +184,11 @@ export function ProjectPlan({ tasks, storageKey, busy, onEdit, onToggle, onDelet
           {connecting && preview && byId.has(connecting) && <path className="plan-preview" d={path(byId.get(connecting)!.x + PLAN_NODE_WIDTH, byId.get(connecting)!.y + byId.get(connecting)!.height / 2, preview.x, preview.y)} />}
         </svg>
         {nodes.map(({ task, x, y, height: nodeHeight }) => {
-          const blocked = unfinishedPrerequisites(task, tasks)
-          const dependentsComplete = tasks.some(row => row.done && row.prerequisiteIds?.includes(task.id))
-          const linked = task.prerequisiteIds?.length || tasks.some(row => row.prerequisiteIds?.includes(task.id))
+          const blocked = unfinishedPrerequisites(task, projectTasks)
+          const dependents = dependentsById.get(task.id) || []
+          const dependentsComplete = dependents.some(row => row.done)
+          const linked = task.prerequisiteIds?.length || dependents.length
+          const externalDependents = dependents.filter(row => !groupIds.has(row.id))
           return <article key={task.id} tabIndex={0} aria-label={task.title} className={'plan-node ' + (task.done ? 'complete' : blocked.length ? 'blocked' : 'available') + (moving === task.id ? ' moving' : '') + (focusRootId === task.id ? ' branch-root' : '')} style={{ left: x, top: y, borderTopColor: task.color }} onPointerDown={event => {
             if (event.button !== 0 || ((event.target as HTMLElement).closest('button,select,input,label') && !(event.target as HTMLElement).closest('.plan-move-handle'))) return
             event.preventDefault()
@@ -195,8 +214,21 @@ export function ProjectPlan({ tasks, storageKey, busy, onEdit, onToggle, onDelet
             <button className="plan-task-title" data-task-id={task.id} onClick={() => onEdit(task)}>{task.title}</button>
             <div className="plan-node-details"><div className="plan-node-details-clip"><div className="plan-node-details-content">
             <span className="plan-state">{task.done ? 'Completada' : blocked.length ? 'Bloqueada' : 'Disponible'}</span><small>{task.date || 'Sin fecha'}{task.date && task.allDay ? ' · Todo el día' : task.date ? ' · ' + task.time : ''}</small>
-            <label>Tareas previas<select aria-label={'Añadir tarea previa a ' + task.title} value="" disabled={busy} onChange={event => { if (event.target.value) connect(event.target.value, task) }}><option value="">Añadir tarea previa…</option>{tasks.filter(row => row.id !== task.id && !task.prerequisiteIds?.includes(row.id)).map(row => <option key={row.id} value={row.id}>{row.title}</option>)}</select></label>
-            <div className="plan-links">{(task.prerequisiteIds || []).map(id => <button disabled={busy} key={id} title={focusRootId && !byId.has(id) ? 'Quitar conexión · Tarea fuera de esta rama' : 'Quitar conexión'} onClick={() => onLinks(task, task.prerequisiteIds!.filter(value => value !== id))}>{tasks.find(row => row.id === id)?.title || 'Tarea no disponible'}{focusRootId && !byId.has(id) ? ' (fuera de rama)' : ''} ×</button>)}</div>
+            <label>Tareas previas<select aria-label={'Añadir tarea previa a ' + task.title} value="" disabled={busy} onChange={event => { if (event.target.value) connect(event.target.value, task) }}><option value="">Añadir tarea previa…</option>{projectTasks.filter(row => row.id !== task.id && !task.prerequisiteIds?.includes(row.id)).map(row => <option key={row.id} value={row.id}>{row.title}{groupIds.has(row.id) ? '' : ' · ' + groupName(row)}</option>)}</select></label>
+            <div className="plan-links">{(task.prerequisiteIds || []).map(id => {
+              const prior = projectById.get(id)
+              const name = prior?.title || 'Tarea no disponible'
+              const external = prior && !groupIds.has(id)
+              const remove = () => onLinks(task, (task.prerequisiteIds || []).filter(value => value !== id))
+              return external ? <div key={id} className="plan-external-link">
+                <button type="button" disabled={busy} onClick={() => onOpenExternal(prior)}>{name} · {groupName(prior)}{prior.done ? '' : ' · Pendiente'} ↗</button>
+                <button type="button" disabled={busy} aria-label={'Quitar conexión con ' + name} onClick={remove}>×</button>
+              </div> : <button type="button" disabled={busy} key={id} aria-label={'Quitar conexión con ' + name} onClick={remove}>{name}{focusRootId && !byId.has(id) ? ' (fuera de rama)' : ''} ×</button>
+            })}</div>
+            {externalDependents.length > 0 && <div className="plan-links plan-external-dependents">
+              <span>Tareas dependientes</span>
+              {externalDependents.map(row => <button type="button" disabled={busy} key={row.id} onClick={() => onOpenExternal(row)}>{row.title} · {groupName(row)}{row.done ? ' · Completada' : ''} ↗</button>)}
+            </div>}
             <div className="plan-actions"><button aria-pressed={focusRootId === task.id} aria-label={'Ver rama de ' + task.title} onClick={() => enterFocus(task.id)}>Ver rama</button><button disabled={busy || (!task.done && blocked.length > 0) || (task.done && dependentsComplete)} title={blocked.length ? 'Completa primero las tareas previas' : dependentsComplete ? 'Reabre primero las tareas dependientes' : undefined} onClick={() => onToggle(task.id)}>{task.done ? 'Reabrir' : 'Completar'}</button><button disabled={busy} onClick={() => onEdit(task)}>Editar</button><button disabled={busy || Boolean(linked)} title={linked ? 'Retira primero las conexiones' : 'Borrar tarea'} onClick={() => onDelete(task.id)}>Borrar</button></div>
             </div></div></div>
           </article>
