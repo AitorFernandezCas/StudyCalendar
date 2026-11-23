@@ -10,7 +10,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -26,11 +28,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.studycalendar.core.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -42,7 +48,34 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val spanish = Locale.forLanguageTag("es")
+private val calendarZone = ZoneId.of("Europe/Madrid")
 private fun LocalDate.label() = format(DateTimeFormatter.ofPattern("EEE d MMM", spanish))
+private fun LocalDate.agendaLabel() = format(DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", spanish))
+  .replaceFirstChar { it.titlecase(spanish) }
+
+private fun calendarPeriod(view: String, date: LocalDate, first: LocalDate): String = when (view) {
+  "Mes" -> date.format(DateTimeFormatter.ofPattern("MMMM yyyy", spanish)).replaceFirstChar { it.titlecase(spanish) }
+  "Semana" -> {
+    val last = first.plusDays(6)
+    val short = DateTimeFormatter.ofPattern("d MMM", spanish)
+    when {
+      first.year != last.year -> {
+        val withYear = DateTimeFormatter.ofPattern("d MMM yyyy", spanish)
+        "${first.format(withYear)} – ${last.format(withYear)}"
+      }
+      first.month == last.month -> "${first.dayOfMonth}–${last.format(short)}"
+      else -> "${first.format(short)} – ${last.format(short)}"
+    }
+  }
+  else -> date.label().replaceFirstChar { it.titlecase(spanish) }
+}
+
+private fun LocalDate.shiftCalendarPeriod(view: String, amount: Long) = when (view) {
+  "Mes" -> plusMonths(amount)
+  "Semana" -> plusWeeks(amount)
+  else -> plusDays(amount)
+}
+
 private data class CalendarTarget(val date: LocalDate, val bounds: Rect, val visibleBounds: Rect, val first: Int? = null, val last: Int? = null, val allDay: Boolean = false) {
   fun proposal(task: Task, point: Offset, grabMinutes: Float): Task? = CalendarLayout.move(task, date,
     first?.let { (it + (point.y - bounds.top) / bounds.height * (last!! - it) - grabMinutes).toInt() }, allDay)
@@ -58,7 +91,6 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
   var view by rememberSaveable(owner) { mutableStateOf(prefs.getString("view", "Semana") ?: "Semana") }
   var agenda by rememberSaveable(owner) { mutableStateOf(prefs.getBoolean("agenda", false)) }
   var category by rememberSaveable(owner) { mutableStateOf(prefs.getString("category", "*") ?: "*") }
-  var categoryMenu by remember { mutableStateOf(false) }
   var settingsForm by remember { mutableStateOf(false) }
   var openedDay by remember { mutableStateOf<LocalDate?>(null) }
   var undo by remember(owner) { mutableStateOf<Pair<Task, Task>?>(null) }
@@ -99,6 +131,7 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
   var viewport by remember { mutableStateOf(Rect.Zero) }
   var rootViewport by remember { mutableStateOf(Rect.Zero) }
   val hour = 72.dp
+  val density = LocalDensity.current
   LaunchedEffect(owner, category, categories) {
     if (category !in listOf("*", "-") && categories.none { it.id == category }) category = "*"
   }
@@ -109,8 +142,8 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
     if (!agenda && view != "Mes") {
       withFrameNanos { }
       withFrameNanos { }
-      val now = CalendarLayout.minute(LocalTime.now(ZoneId.of("Europe/Madrid")))
-      vertical.scrollTo(((now - settings.start - 60).coerceAtLeast(0) * 72 * context.resources.displayMetrics.density / 60).toInt())
+      val now = CalendarLayout.minute(LocalTime.now(calendarZone))
+      vertical.scrollTo(with(density) { (hour.toPx() * (now - settings.start - 60).coerceAtLeast(0) / 60).toInt() })
     }
   }
   val edge = with(LocalDensity.current) { 40.dp.toPx() }
@@ -160,27 +193,32 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
     }
   }
   val filtered = tasks.filter { it.date != null && (category == "*" || if (category == "-") it.categoryId == null else it.categoryId == category) }
+  val tasksByDate = filtered.groupBy(Task::date)
   val first = if (view == "Semana") CalendarLayout.week(date, settings.sunday) else date
   val dates = if (view == "Mes") CalendarLayout.month(date, settings.sunday) else (0L until if (view == "Semana") 7L else 1L).map(first::plusDays)
   fun target(key: String, day: LocalDate, start: Int? = null, end: Int? = null, allDay: Boolean = false) = Modifier.onGloballyPositioned {
     targets[key] = CalendarTarget(day, Rect(it.positionInWindow(), Size(it.size.width.toFloat(), it.size.height.toFloat())), it.boundsInWindow(), start, end, allDay)
   }
-  @Composable fun chip(task: Task, modifier: Modifier = Modifier) {
+  @Composable fun chip(task: Task, modifier: Modifier = Modifier, compact: Boolean = false) {
     val coordinates = remember(task.id) { arrayOfNulls<LayoutCoordinates>(1) }
-    val color = projects.find { it.id == task.projectId }?.color ?: categories.find { it.id == task.categoryId }?.color ?: "#7056ED"
+    val color = projects.find { it.id == task.projectId }?.color ?: categories.find { it.id == task.categoryId }?.color
+    val accent by rememberUpdatedState(color?.let { Color(android.graphics.Color.parseColor(it)) } ?: MaterialTheme.colorScheme.primary)
     val currentTask by rememberUpdatedState(task)
-    Surface(modifier.onGloballyPositioned {
+    CalendarTaskBlock(task, accent, compact, modifier.onGloballyPositioned {
       coordinates[0] = it
       geometries[task.id] = task to Rect(it.positionInWindow(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
     }.graphicsLayer {
       val active = drag.session
       alpha = if (active?.task?.id != task.id) 1f else if (active.phase == DragPhase.DRAGGING) .2f else 0f
     }.testTag("calendar-task-${task.id}")
-      .semantics { contentDescription = "${task.title}, ${task.date}, ${if (task.allDay) "todo el día" else "${task.start} a ${task.end}"}. Toca para editar; mantén pulsado para mover." }
+      .semantics {
+        contentDescription = "${task.title}, ${task.date}, ${if (task.allDay) "todo el día" else "${task.start} a ${task.end}"}. Mantén pulsado para mover."
+        stateDescription = if (task.completed) "Completada" else "Pendiente"
+      }
       .pointerInput(task.id, busy, targets) {
         if (!busy) detectDragGesturesAfterLongPress(onDragStart = { offset ->
           val geometry = geometries[currentTask.id]
-          if (geometry != null) drag.begin(currentTask, geometry.second, offset, Color(android.graphics.Color.parseColor(color)))?.let(::updateDestination)
+          if (geometry != null) drag.begin(currentTask, geometry.second, offset, accent, compact)?.let(::updateDestination)
         }, onDragCancel = { finish(null) }, onDragEnd = {
           val active = drag.session
           if (active != null && active.phase == DragPhase.DRAGGING) {
@@ -196,129 +234,207 @@ internal fun CalendarScreen(tasks: List<Task>, projects: List<Project>, categori
             updateDestination(active)
           }
         })
-      }.clickable { edit(task) }, shape = RoundedCornerShape(6.dp), color = Color(android.graphics.Color.parseColor(color)).copy(alpha = if (task.completed) .10f else .20f),
-      border = BorderStroke(1.dp, Color(android.graphics.Color.parseColor(color)))) {
-      Text((if (task.completed) "✓ " else "") + task.title, Modifier.padding(5.dp), maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-    }
+      }.clickable(role = Role.Button, onClickLabel = "Editar tarea") { edit(task) })
   }
   @Composable fun dayAgenda(day: LocalDate) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(day.label(), style = MaterialTheme.typography.titleMedium)
-      TextButton(enabled = !busy, onClick = { create(day, null) }) { Text("Nueva tarea · ${day.dayOfMonth}") }
-      val daily = filtered.filter { it.date == day }.sortedWith(compareByDescending<Task> { it.allDay }.thenBy { it.start }.thenBy { it.title })
-      if (daily.isEmpty()) Text("No tienes tareas para este día.")
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        CalendarDateNumber(day.dayOfMonth, day == today, day == date)
+        Text(day.agendaLabel(), Modifier.weight(1f).semantics { heading() },
+          color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+        IconButton(enabled = !busy, onClick = { create(day, null) },
+          colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)) {
+          Icon(appIcon("Añadir"), "Nueva tarea para el ${day.agendaLabel().lowercase(spanish)}")
+        }
+      }
+      HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+      val daily = tasksByDate[day].orEmpty().sortedWith(compareByDescending<Task> { it.allDay }.thenBy { it.start }.thenBy { it.title })
+      if (daily.isEmpty()) Text("No tienes tareas para este día.", color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodyMedium)
       daily.forEach { task -> TaskCard(task, projects.find { it.id == task.projectId }, categories.find { it.id == task.categoryId }, busy,
         complete = { complete(task) }, edit = { edit(task) }, delete = { delete(task) }, today = today, allTasks = tasks) }
     }
   }
-  BoxWithConstraints {
-  val dayWidth = (maxWidth - 48.dp).coerceAtLeast(180.dp)
-  val weekWidth = ((maxWidth - 48.dp) / 7).coerceAtLeast(180.dp)
-  val gridHeight = ((availableHeight ?: LocalConfiguration.current.screenHeightDp.dp) - 180.dp).coerceAtLeast(240.dp)
-  Column(Modifier.onGloballyPositioned { rootViewport = it.boundsInWindow() }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      listOf("Día", "Semana", "Mes").forEach { value -> FilterChip(view == value, { view = value }, label = { Text(value) }) }
-      IconButton(onClick = { settingsForm = true }) { Icon(appIcon("Configuración"), "Ajustes del calendario") }
-    }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-      IconButton(onClick = { select(when(view) { "Mes" -> date.minusMonths(1); "Semana" -> date.minusWeeks(1); else -> date.minusDays(1) }) }) { Icon(appIcon("Atrás"), "Anterior") }
-      TextButton(modifier = Modifier.weight(1f), onClick = { DatePickerDialog(context, { _, year, month, day -> select(LocalDate.of(year, month + 1, day)) }, date.year, date.monthValue - 1, date.dayOfMonth).show() }) {
-        Text(if (view == "Mes") date.format(DateTimeFormatter.ofPattern("MMMM yyyy", spanish)) else date.label(), maxLines = 2)
-      }
-      TextButton(onClick = { select(today) }) { Text("Hoy") }
-      IconButton(onClick = { select(when(view) { "Mes" -> date.plusMonths(1); "Semana" -> date.plusWeeks(1); else -> date.plusDays(1) }) }) { Icon(appIcon("Siguiente"), "Siguiente") }
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      if (view != "Mes") TextButton(onClick = { agenda = !agenda }) { Text(if (agenda) "Mostrar horario" else "Mostrar agenda") }
-      Box {
-        TextButton(onClick = { categoryMenu = true }) { Text(if (category == "*") "Todas las categorías" else if (category == "-") "Sin categoría" else categories.find { it.id == category }?.name ?: "Todas") }
-        DropdownMenu(categoryMenu, { categoryMenu = false }) {
-          (listOf("*" to "Todas las categorías", "-" to "Sin categoría") + categories.map { it.id to it.name }).forEach { (id, name) ->
-            DropdownMenuItem(text = { Text(name) }, onClick = { category = id; categoryMenu = false })
+  BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val calendarWidth = maxWidth
+    val colors = MaterialTheme.colorScheme
+    val gridLine = colors.outlineVariant
+    val gridHeight = ((availableHeight ?: LocalConfiguration.current.screenHeightDp.dp) - 156.dp).coerceAtLeast(240.dp)
+    Column(Modifier.onGloballyPositioned { rootViewport = it.boundsInWindow() }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      CalendarToolbar(
+        title = calendarPeriod(view, date, first), view = view, selectView = { view = it },
+        agenda = agenda, toggleAgenda = { agenda = !agenda }, category = category, categories = categories,
+        selectCategory = { category = it }, pickDate = {
+          DatePickerDialog(context, { _, year, month, day -> select(LocalDate.of(year, month + 1, day)) },
+            date.year, date.monthValue - 1, date.dayOfMonth).show()
+        }, previous = { select(date.shiftCalendarPeriod(view, -1)) }, today = { select(today) },
+        next = { select(date.shiftCalendarPeriod(view, 1)) }, openSettings = { settingsForm = true }
+      )
+      undo?.let { (before, after) ->
+        Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp), shape = RoundedCornerShape(12.dp), color = colors.primaryContainer) {
+          Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Horario guardado", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            TextButton(enabled = !busy, onClick = { move(after, before) { success -> if (success) undo = null } }) { Text("Deshacer") }
+            TextButton(onClick = { undo = null }) { Text("Cerrar") }
           }
         }
       }
-    }
-    undo?.let { (before, after) ->
-      Row { Text("Horario guardado", Modifier.weight(1f)); TextButton(enabled = !busy, onClick = { move(after, before) { success -> if (success) undo = null } }) { Text("Deshacer") }; TextButton(onClick = { undo = null }) { Text("Cerrar") } }
-    }
 
-    if (view == "Mes") {
-      Row { dates.take(7).forEach { Text(it.format(DateTimeFormatter.ofPattern("EE", spanish)), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall) } }
-      dates.chunked(7).forEach { week ->
-        Row {
-          week.forEach { day ->
-            Column(Modifier.testTag("calendar-month-$day").weight(1f).height(116.dp).then(target("month-$day", day)).border(1.dp, MaterialTheme.colorScheme.outline).clickable { openedDay = day }.padding(2.dp)) {
-              Text(day.dayOfMonth.toString(), color = if (day == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelMedium)
-              val daily = filtered.filter { it.date == day }
-              daily.take(2).forEach { chip(it, Modifier.fillMaxWidth().height(32.dp)) }
-              if (daily.size > 2) Text("+${daily.size - 2}", style = MaterialTheme.typography.labelSmall)
+      if (view == "Mes") {
+        val chipHeight = with(density) { (20.sp.toDp() + 4.dp).coerceAtLeast(24.dp) }
+        val dateHeight = with(density) { (20.sp.toDp() + 8.dp).coerceAtLeast(28.dp) }
+        val overflowHeight = with(density) { (16.sp.toDp() + 2.dp).coerceAtLeast(18.dp) }
+        val weekday = DateTimeFormatter.ofPattern("EE", spanish)
+        Column(Modifier.fillMaxWidth().background(colors.surface)) {
+          Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            dates.take(7).forEach {
+              Text(it.format(weekday), Modifier.weight(1f), color = colors.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, maxLines = 1)
             }
           }
-        }
-      }
-    } else if (agenda) dates.forEach { dayAgenda(it) }
-    else {
-      val outside = filtered.filter { it.date in dates && !CalendarLayout.visible(it, settings) }
-      if (outside.isNotEmpty()) TextButton(onClick = { agenda = true }) { Text("${outside.size} tareas fuera del horario · Ver agenda") }
-      val columnWidth = if (view == "Día") dayWidth else weekWidth
-      val allDayHeight = (48 + (dates.maxOfOrNull { day -> filtered.count { it.date == day && it.allDay } } ?: 0) * 44).coerceAtMost(140).dp
-      Column(Modifier.height(gridHeight).onGloballyPositioned { viewport = it.boundsInWindow() }.border(1.dp, MaterialTheme.colorScheme.outline)) {
-        Row {
-          Spacer(Modifier.width(48.dp))
-          Row(Modifier.horizontalScroll(horizontal)) {
-          dates.forEach { day ->
-            Column(Modifier.width(columnWidth)) {
-              TextButton(onClick = { openedDay = day }) { Text(day.label(), color = if (day == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) }
-              Column(Modifier.testTag("calendar-all-$day").fillMaxWidth().height(allDayHeight).then(target("all-$day", day, allDay = true)).verticalScroll(rememberScrollState())) {
-                TextButton(enabled = !busy, onClick = { create(day, null) }) { Text("Todo el día +") }
-                filtered.filter { it.date == day && it.allDay }.forEach { chip(it, Modifier.fillMaxWidth().padding(2.dp)) }
+          dates.chunked(7).forEach { week ->
+            Row(Modifier.fillMaxWidth()) {
+              week.forEachIndexed { index, day ->
+                val daily = tasksByDate[day].orEmpty()
+                val overflow = (daily.size - 2).coerceAtLeast(0)
+                Column(Modifier.testTag("calendar-month-$day").weight(1f).height(dateHeight + chipHeight * 2 + overflowHeight + 10.dp)
+                  .then(target("month-$day", day)).drawBehind {
+                    drawLine(gridLine, Offset.Zero, Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+                    if (index != 0) drawLine(gridLine, Offset.Zero, Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+                  }.clickable(role = Role.Button, onClickLabel = "Abrir agenda") { openedDay = day }
+                  .semantics {
+                    contentDescription = day.agendaLabel()
+                    if (day == today) stateDescription = "Hoy"
+                  }.padding(horizontal = 2.dp, vertical = 3.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                  Box(Modifier.height(dateHeight), contentAlignment = Alignment.Center) {
+                    CalendarDateNumber(day.dayOfMonth, day == today, day == date, muted = day.month != date.month)
+                  }
+                  daily.take(2).forEach { chip(it, Modifier.fillMaxWidth().height(chipHeight), compact = true) }
+                  if (overflow > 0) {
+                    Text("+$overflow", color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall,
+                      maxLines = 1, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                        .clickable(role = Role.Button, onClickLabel = "Abrir agenda") { openedDay = day }
+                        .semantics { contentDescription = if (overflow == 1) "Una tarea más" else "$overflow tareas más" })
+                  }
+                }
               }
             }
           }
+          HorizontalDivider(color = gridLine)
         }
+      } else if (agenda) {
+        dates.forEach { dayAgenda(it) }
+      } else {
+        val outside = filtered.count { it.date in dates && !CalendarLayout.visible(it, settings) }
+        if (outside > 0) TextButton(onClick = { agenda = true }, modifier = Modifier.padding(horizontal = 8.dp)) {
+          val count = if (outside == 1) "1 tarea" else "$outside tareas"
+          Text("$count fuera del horario · Ver agenda")
         }
-        HorizontalDivider()
-        Row(Modifier.weight(1f).verticalScroll(vertical)) {
-          Column(Modifier.width(48.dp)) {
-            var minute = settings.start
-            while (minute < settings.end) {
-              val step = minOf(60, settings.end - minute)
-              Text(CalendarLayout.time(minute), Modifier.height(hour * (step / 60f)), style = MaterialTheme.typography.labelSmall)
-              minute += step
+        val gutter = with(density) { (36.sp.toDp() + 12.dp).coerceAtLeast(48.dp) }
+        val columnWidth = if (view == "Día") (calendarWidth - gutter).coerceAtLeast(180.dp)
+          else ((calendarWidth - gutter) / 7).coerceAtLeast(180.dp)
+        val hours = settings.start until settings.end step 60
+        val slots = settings.start until settings.end step 15
+        val allDayCount = dates.maxOf { day -> tasksByDate[day].orEmpty().count(Task::allDay) }
+        val allDayChipHeight = with(density) { (24.sp.toDp() + 4.dp).coerceAtLeast(28.dp) }
+        val allDayHeight = (48.dp + allDayChipHeight * allDayCount).coerceAtMost(140.dp)
+        var minuteNow by remember { mutableStateOf(CalendarLayout.minute(LocalTime.now(calendarZone))) }
+        LaunchedEffect(today) {
+          while (true) {
+            minuteNow = CalendarLayout.minute(LocalTime.now(calendarZone))
+            delay(30_000)
+          }
+        }
+        Column(Modifier.fillMaxWidth().height(gridHeight).background(colors.surface)
+          .onGloballyPositioned { viewport = it.boundsInWindow() }) {
+          Row {
+            Spacer(Modifier.width(gutter))
+            Row(Modifier.horizontalScroll(horizontal)) {
+              dates.forEach { day ->
+                Column(Modifier.width(columnWidth).drawBehind {
+                  drawLine(gridLine, Offset.Zero, Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+                }) {
+                  Column(Modifier.fillMaxWidth()
+                    .clickable(role = Role.Button, onClickLabel = "Abrir agenda") { openedDay = day }
+                    .semantics {
+                      contentDescription = day.agendaLabel()
+                      if (day == today) stateDescription = "Hoy"
+                    }.padding(vertical = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(day.format(DateTimeFormatter.ofPattern("EEE", spanish)), color = colors.onSurfaceVariant,
+                      style = MaterialTheme.typography.labelSmall)
+                    CalendarDateNumber(day.dayOfMonth, day == today, day == date)
+                  }
+                  Column(Modifier.testTag("calendar-all-$day").fillMaxWidth().height(allDayHeight)
+                    .then(target("all-$day", day, allDay = true)).verticalScroll(rememberScrollState())) {
+                    TextButton(enabled = !busy, onClick = { create(day, null) },
+                      modifier = Modifier.semantics { contentDescription = "Nueva tarea de todo el día, ${day.label()}" }) {
+                      Icon(appIcon("Añadir"), null, Modifier.size(16.dp))
+                      Spacer(Modifier.width(4.dp))
+                      Text("Todo el día")
+                    }
+                    tasksByDate[day].orEmpty().filter(Task::allDay).forEach {
+                      chip(it, Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp))
+                    }
+                  }
+                }
+              }
             }
           }
-          Row(Modifier.horizontalScroll(horizontal)) {
-            dates.forEach { day ->
-              Box(Modifier.testTag("calendar-grid-$day").width(columnWidth).height(hour * ((settings.end - settings.start) / 60f)).then(target("grid-$day", day, settings.start, settings.end))) {
-                var minute = settings.start
-                while (minute < settings.end) {
-                  val at = minute
-                  Box(Modifier.offset(y = hour * ((at - settings.start) / 60f)).fillMaxWidth().height(hour * (minOf(15, settings.end - at) / 60f)).border(.3.dp, MaterialTheme.colorScheme.outline).semantics { contentDescription = "Nueva tarea, ${day.label()}, ${CalendarLayout.time(at)}" }.clickable(enabled = !busy && at < 1439) { create(day, at) })
-                  minute += 15
+          HorizontalDivider(color = gridLine)
+          Row(Modifier.weight(1f).verticalScroll(vertical)) {
+            Column(Modifier.width(gutter)) {
+              hours.forEach { minute ->
+                Text(CalendarLayout.time(minute), Modifier.fillMaxWidth().height(hour * (minOf(60, settings.end - minute) / 60f))
+                  .padding(horizontal = 4.dp), color = colors.onSurfaceVariant, style = MaterialTheme.typography.labelSmall,
+                  textAlign = TextAlign.End, maxLines = 1)
+              }
+            }
+            Row(Modifier.horizontalScroll(horizontal)) {
+              dates.forEach { day ->
+                Box(Modifier.testTag("calendar-grid-$day").width(columnWidth).height(hour * ((settings.end - settings.start) / 60f))
+                  .then(target("grid-$day", day, settings.start, settings.end)).drawBehind {
+                    drawLine(gridLine, Offset.Zero, Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+                    for (minute in settings.start + 60 until settings.end step 60) {
+                      val y = hour.toPx() * (minute - settings.start) / 60f
+                      drawLine(gridLine, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                    }
+                  }) {
+                  slots.forEach { minute ->
+                    Box(Modifier.offset(y = hour * ((minute - settings.start) / 60f)).fillMaxWidth()
+                      .height(hour * (minOf(15, settings.end - minute) / 60f))
+                      .semantics { contentDescription = "Nueva tarea, ${day.label()}, ${CalendarLayout.time(minute)}" }
+                      .clickable(enabled = !busy && minute < 1439, role = Role.Button) { create(day, minute) })
+                  }
+                  CalendarLayout.lanes(tasksByDate[day].orEmpty().filter { CalendarLayout.visible(it, settings) }).forEach { lane ->
+                    val start = maxOf(settings.start, CalendarLayout.minute(lane.task.start!!))
+                    val end = minOf(settings.end, CalendarLayout.minute(lane.task.end!!))
+                    val laneWidth = columnWidth / lane.columns
+                    chip(lane.task, Modifier.offset(x = laneWidth * lane.column, y = hour * ((start - settings.start) / 60f))
+                      .width(laneWidth).height((hour * ((end - start) / 60f)).coerceAtLeast(20.dp)).padding(horizontal = 2.dp))
+                  }
+                  if (day == today && minuteNow in settings.start until settings.end) {
+                    Canvas(Modifier.offset(y = hour * ((minuteNow - settings.start) / 60f) - 4.dp).fillMaxWidth().height(8.dp)) {
+                      val rose = Color(0xFFB53248)
+                      drawLine(rose, Offset(4.dp.toPx(), center.y), Offset(size.width, center.y), strokeWidth = 1.dp.toPx())
+                      drawCircle(rose, radius = 3.dp.toPx(), center = Offset(4.dp.toPx(), center.y))
+                    }
+                  }
                 }
-                CalendarLayout.lanes(filtered.filter { it.date == day && CalendarLayout.visible(it, settings) }).forEach { lane ->
-                  val start = maxOf(settings.start, CalendarLayout.minute(lane.task.start!!))
-                  val end = minOf(settings.end, CalendarLayout.minute(lane.task.end!!))
-                  chip(lane.task, Modifier.offset(x = columnWidth * (lane.column.toFloat() / lane.columns), y = hour * ((start - settings.start) / 60f)).width(columnWidth / lane.columns).height((hour * ((end - start) / 60f)).coerceAtLeast(20.dp)))
-                }
-                var now by remember { mutableStateOf(LocalTime.now(ZoneId.of("Europe/Madrid"))) }
-                LaunchedEffect(day) { while (true) { now = LocalTime.now(ZoneId.of("Europe/Madrid")); delay(30_000) } }
-                val minuteNow = CalendarLayout.minute(now)
-                if (day == today && minuteNow in settings.start until settings.end) HorizontalDivider(Modifier.offset(y = hour * ((minuteNow - settings.start) / 60f)), thickness = 2.dp, color = MaterialTheme.colorScheme.primary)
               }
             }
           }
         }
       }
     }
-  }
   }
   openedDay?.let { day ->
     Dialog(onDismissRequest = { openedDay = null }) {
-      Surface(shape = RoundedCornerShape(16.dp)) {
-        Column(Modifier.heightIn(max = 650.dp).verticalScroll(rememberScrollState()).padding(16.dp)) {
-          TextButton(onClick = { openedDay = null }) { Text("Cerrar agenda") }
+      Surface(shape = RoundedCornerShape(24.dp)) {
+        Column(Modifier.heightIn(max = 650.dp).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+          TextButton(onClick = { openedDay = null }, modifier = Modifier.align(Alignment.End).padding(horizontal = 8.dp)) {
+            Text("Cerrar agenda")
+          }
           dayAgenda(day)
         }
       }

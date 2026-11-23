@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -281,7 +282,7 @@ private fun CalendarContent(model: CalendarViewModel) {
     val creatingFeature = screen == Destination.PROJECTS && project != null && features != null && group == null
     val inactiveTaskPlan = screen == Destination.PROJECTS && project != null && project.status != ProjectStatus.ACTIVE && !creatingFeature
     if (loaded && !model.busy && (!cloud.working || cloud.session != null) && !model.readOnly && !inactiveTaskPlan) {
-      ExtendedFloatingActionButton(onClick = {
+      val create = {
         when (screen) {
           Destination.SETTINGS -> { editingCategory = null; categoryForm = true }
           Destination.ROUTINES -> { editingRoutine = null; routineForm = true }
@@ -290,28 +291,41 @@ private fun CalendarContent(model: CalendarViewModel) {
             else newTask(project, featureId = group?.feature?.id)
           else -> newTask()
         }
-      }) { Text(when {
-        screen == Destination.SETTINGS -> "Nueva categoría"
-        screen == Destination.ROUTINES -> "Nueva rutina"
-        screen == Destination.PROJECTS && project == null -> "Nuevo proyecto"
-        creatingFeature -> "Nueva funcionalidad"
-        else -> "Nueva tarea"
-      }) }
+      }
+      if (screen == Destination.CALENDAR) {
+        FloatingActionButton(onClick = create, shape = RoundedCornerShape(18.dp),
+          containerColor = MaterialTheme.colorScheme.onPrimaryContainer, contentColor = MaterialTheme.colorScheme.onPrimary) {
+          Icon(appIcon("Añadir"), "Nueva tarea")
+        }
+      } else {
+        ExtendedFloatingActionButton(onClick = create) { Text(when {
+          screen == Destination.SETTINGS -> "Nueva categoría"
+          screen == Destination.ROUTINES -> "Nueva rutina"
+          screen == Destination.PROJECTS && project == null -> "Nuevo proyecto"
+          creatingFeature -> "Nueva funcionalidad"
+          else -> "Nueva tarea"
+        }) }
+      }
     }
   }) { padding ->
     BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
     val calendarHeight = maxHeight
     screenState.SaveableStateProvider(if (screen == Destination.PROJECTS) "${screen.name}/${selectedProject.orEmpty()}/${selectedGroup.orEmpty()}" else screen.name) {
     val calendarList = rememberLazyListState()
-    LazyColumn(state = calendarList, modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 100.dp, top = 24.dp)) {
-      item {
+    val calendarVisible = screen == Destination.CALENDAR && loaded
+    val screenInsets = if (calendarVisible) 0.dp else 20.dp
+    LazyColumn(state = calendarList, modifier = Modifier.fillMaxSize().padding(horizontal = screenInsets),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+      contentPadding = PaddingValues(bottom = if (calendarVisible) 76.dp else 100.dp, top = if (calendarVisible) 4.dp else 24.dp)) {
+      if (!calendarVisible) item {
         Text(if (screen == Destination.TASKS) "Todas las tareas" else screen.label, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold)
       }
       if (screen == Destination.SETTINGS) item { AccountPanel(cloud, pending, model::login, model::refresh, model::logout, model::resolve, initiallyExpanded = true) }
       if (cloud.error != null && screen != Destination.SETTINGS) item {
-        Text(cloud.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        TextButton(enabled = !cloud.working, onClick = model::refresh) { Text("Reintentar") }
+        Column(Modifier.padding(horizontal = if (calendarVisible) 12.dp else 0.dp)) {
+          Text(cloud.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+          TextButton(enabled = !cloud.working, onClick = model::refresh) { Text("Reintentar") }
+        }
       }
       if (!loaded) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (cloud.error != null) "No se pudieron cargar los datos." else "Cargando tus datos…") }
 

@@ -3,7 +3,6 @@ package com.studycalendar.android
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,13 +20,12 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.studycalendar.core.Task
 
 internal enum class DragPhase { DRAGGING, SAVING, LANDING }
 
-internal class CalendarDragSession(val task: Task, val source: Rect, val grab: Offset, val color: Color) {
+internal class CalendarDragSession(val task: Task, val source: Rect, val grab: Offset, val color: Color, val compact: Boolean) {
   var pointer by mutableStateOf(source.topLeft + grab)
   var phase by mutableStateOf(DragPhase.DRAGGING)
   var preview by mutableStateOf<Task?>(null)
@@ -49,9 +47,9 @@ internal class CalendarDragSession(val task: Task, val source: Rect, val grab: O
 internal class CalendarDragController {
   var session by mutableStateOf<CalendarDragSession?>(null)
     private set
-  fun begin(task: Task, source: Rect, grab: Offset, color: Color): CalendarDragSession? {
+  fun begin(task: Task, source: Rect, grab: Offset, color: Color, compact: Boolean): CalendarDragSession? {
     if (session != null) return null
-    return CalendarDragSession(task, source, grab, color).also { session = it }
+    return CalendarDragSession(task, source, grab, color, compact).also { session = it }
   }
   fun clear(expected: CalendarDragSession? = session) { if (session === expected) session = null }
   suspend fun land(session: CalendarDragSession, bounds: Rect?) {
@@ -79,7 +77,8 @@ internal fun CalendarDragOverlay(controller: CalendarDragController, modifier: M
             size = destination.size, cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()))
         }
       }
-      Surface(Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(with(density) { session.source.width.toDp() }, with(density) { session.source.height.toDp() })
+      CalendarTaskBlock(session.task, session.color, session.compact,
+        Modifier.wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(with(density) { session.source.width.toDp() }, with(density) { session.source.height.toDp() })
         .graphicsLayer {
           val rect = session.floating
           // Layer transforms track input without relaying out the calendar each frame.
@@ -89,12 +88,7 @@ internal fun CalendarDragOverlay(controller: CalendarDragController, modifier: M
           scaleY = rect.height / session.source.height
           alpha = if (session.fade) 1f - session.progress.value else .97f
           shadowElevation = 8.dp.toPx()
-        }.testTag("calendar-drag-card").clearAndSetSemantics { },
-        shape = RoundedCornerShape(6.dp), color = androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surface, session.color, if (session.task.completed) .10f else .20f),
-        contentColor = MaterialTheme.colorScheme.onSurface, border = BorderStroke(1.dp, session.color)) {
-        Text((if (session.task.completed) "✓ " else "") + session.task.title, Modifier.padding(5.dp), maxLines = 3,
-          overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-      }
+        }.testTag("calendar-drag-card").clearAndSetSemantics { })
       if (session.phase == DragPhase.DRAGGING) Surface(Modifier.widthIn(max = 250.dp).graphicsLayer {
         translationX = (session.pointer.x - origin.x).coerceIn(0f, (hostWidth - size.width).coerceAtLeast(0f))
         translationY = session.floating.bottom - origin.y + 8.dp.toPx()

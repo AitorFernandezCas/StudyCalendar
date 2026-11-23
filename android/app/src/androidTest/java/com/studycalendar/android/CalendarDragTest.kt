@@ -91,7 +91,7 @@ class CalendarDragTest {
     settle()
     assertEquals(0, writes)
   }
-  @Test fun monthDropMovesDateExactlyOnce() {
+  @Test fun monthDropAndUndoEachSaveOnce() {
     fixture()
     val source = rule.onNodeWithTag("calendar-task-${original.id}").fetchSemanticsNode().boundsInRoot
     val target = rule.onNodeWithTag("calendar-month-${day.plusDays(1)}").fetchSemanticsNode().boundsInRoot
@@ -103,7 +103,13 @@ class CalendarDragTest {
     settle()
     assertEquals(1, writes)
     assertEquals(day.plusDays(1), saved?.date)
-    rule.onNodeWithText("Deshacer").assertExists()
+    rule.mainClock.autoAdvance = true
+    rule.onNodeWithText("Deshacer").performClick()
+    rule.runOnIdle {
+      assertEquals(2, writes)
+      assertEquals(original, saved)
+    }
+    rule.onNodeWithText("Deshacer").assertDoesNotExist()
   }
   @Test fun failedSaveReturnsToSourceAndClearsGhost() {
     fixture(fail = true)
