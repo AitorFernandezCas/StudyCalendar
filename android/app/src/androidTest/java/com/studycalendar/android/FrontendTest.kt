@@ -139,7 +139,8 @@ class FrontendTest {
   @Test fun narrowLandscapeCalendarUsesAvailableWidthAndKeepsAgendaAccessible() {
     val owner = "frontend-layout-test"
     val context = InstrumentationRegistry.getInstrumentation().targetContext
-    context.getSharedPreferences("calendar-view-$owner", 0).edit().putString("view", "Día").commit()
+    context.getSharedPreferences("calendar-view-$owner", 0).edit()
+      .putString("view", "Día").putBoolean("agenda", false).commit()
     rule.setContent {
       StudyCalendarTheme {
         Box(Modifier.width(320.dp).height(360.dp)) {

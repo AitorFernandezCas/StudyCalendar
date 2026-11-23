@@ -50,7 +50,7 @@ fun ConflictDialog(entry: JSONObject, dismiss: () -> Unit, resolve: (String, Set
       val changes = op.getJSONObject("changes")
       if (op.getString("entity") == "routine_completion") Text("Día de la marca: ${op.getJSONObject("context").optString("day")}")
       if (canChoose) fields.forEach { field ->
-        Text(fieldLabels[field] ?: field, style = MaterialTheme.typography.titleSmall)
+        Text(fieldLabel(field), style = MaterialTheme.typography.titleSmall)
         if (field == "delete") {
           Text("El elemento o sus tareas cambiaron después de confirmar la eliminación. Confirma únicamente si quieres eliminarlos con su estado actual.")
         } else {
@@ -65,7 +65,7 @@ fun ConflictDialog(entry: JSONObject, dismiss: () -> Unit, resolve: (String, Set
           RadioButton(field !in localFields, onClick = { localFields = localFields - field })
           TextButton(onClick = { localFields = localFields - field }) { Text(if (field == "delete") "Conservar elemento" else "Supabase") }
         }
-      } else changes.keys().forEach { field -> Text("${fieldLabels[field] ?: field}: ${value(changes, field)}") }
+      } else changes.keys().forEach { field -> Text("${fieldLabel(field)}: ${value(changes, field)}") }
       Text("Los demás cambios pendientes se conservan. Si descartas este, podrás corregirlo desde su formulario.")
     }
   }, confirmButton = {
@@ -73,4 +73,12 @@ fun ConflictDialog(entry: JSONObject, dismiss: () -> Unit, resolve: (String, Set
       Text(if (canChoose && op.getString("action") == "delete" && "delete" in localFields) "Confirmar eliminación" else if (canChoose) "Aplicar selección" else "Descartar este cambio")
     }
   }, dismissButton = { TextButton(onClick = dismiss) { Text("Revisar más tarde") } })
+}
+
+private fun fieldLabel(field: String) = when (field) {
+  "feature_id" -> "Funcionalidad"
+  "description" -> "Descripción"
+  "source_feature_id" -> "Funcionalidad previa"
+  "target_feature_id" -> "Funcionalidad dependiente"
+  else -> fieldLabels[field] ?: field
 }

@@ -7,6 +7,8 @@ data class PlanPoint(val x: Float, val y: Float) {
 }
 data class PlanCamera(val zoom: Float = 1f, val left: Float = 0f, val top: Float = 0f)
 data class PlanNode(val task: Task, val position: PlanPoint, val height: Float)
+data class PlanItem(val id: String, val title: String, val prerequisites: Set<String>)
+data class PlanBox(val id: String, val position: PlanPoint, val height: Float)
 data class PlanEdge(val source: String, val target: String)
 data class PlanCurve(val start: PlanPoint, val first: PlanPoint, val second: PlanPoint, val end: PlanPoint)
 
@@ -17,11 +19,17 @@ object ProjectGraph {
 
   fun layout(tasks: List<Task>, heights: Map<String, Float> = emptyMap(), positions: Map<String, PlanPoint> = emptyMap()): List<PlanNode> {
     val byId = tasks.associateBy { it.id }
-    val parents = tasks.associate { task -> task.id to task.prerequisiteIds.filter { it in byId }.toSet() }
+    return layoutItems(tasks.map { PlanItem(it.id, it.title, it.prerequisiteIds) }, heights, positions)
+      .map { PlanNode(byId.getValue(it.id), it.position, it.height) }
+  }
+
+  fun layoutItems(items: List<PlanItem>, heights: Map<String, Float> = emptyMap(), positions: Map<String, PlanPoint> = emptyMap()): List<PlanBox> {
+    val ids = items.map { it.id }.toSet()
+    val parents = items.associate { item -> item.id to item.prerequisites.intersect(ids) }
     val children = mutableMapOf<String, MutableList<String>>()
     parents.forEach { (id, ids) -> ids.forEach { children.getOrPut(it) { mutableListOf() }.add(id) } }
     val remaining = parents.mapValues { it.value.size }.toMutableMap()
-    val levels = tasks.associate { it.id to 0 }.toMutableMap()
+    val levels = items.associate { it.id to 0 }.toMutableMap()
     val pending = ArrayDeque(remaining.filterValues { it == 0 }.keys)
     // Iteration avoids overflowing the stack for long plans. Corrupt cycles stay renderable.
     while (pending.isNotEmpty()) {
@@ -33,12 +41,12 @@ object ProjectGraph {
       }
     }
     val rows = mutableMapOf<Int, Float>()
-    return tasks.sortedWith { a, b -> Overview.compareNames(a.title, b.title).takeIf { it != 0 } ?: a.id.compareTo(b.id) }.map { task ->
-      val level = levels.getValue(task.id)
-      val height = heights[task.id]?.takeIf { it.isFinite() }?.coerceAtLeast(NODE_HEIGHT) ?: NODE_HEIGHT
+    return items.sortedWith { a, b -> Overview.compareNames(a.title, b.title).takeIf { it != 0 } ?: a.id.compareTo(b.id) }.map { item ->
+      val level = levels.getValue(item.id)
+      val height = heights[item.id]?.takeIf { it.isFinite() }?.coerceAtLeast(NODE_HEIGHT) ?: NODE_HEIGHT
       val y = rows[level] ?: 32f
       rows[level] = y + height + 44f
-      PlanNode(task, positions[task.id]?.takeIf { it.valid() } ?: PlanPoint(32f + level * (NODE_WIDTH + 70f), y), height)
+      PlanBox(item.id, positions[item.id]?.takeIf { it.valid() } ?: PlanPoint(32f + level * (NODE_WIDTH + 70f), y), height)
     }
   }
 
@@ -47,13 +55,15 @@ object ProjectGraph {
     return tasks.flatMap { task -> task.prerequisiteIds.filter { it in ids }.sorted().map { PlanEdge(it, task.id) } }
   }
 
-  fun route(edge: PlanEdge, nodes: List<PlanNode>): List<PlanCurve> {
-    val source = nodes.find { it.task.id == edge.source } ?: return emptyList()
-    val target = nodes.find { it.task.id == edge.target } ?: return emptyList()
+  fun route(edge: PlanEdge, nodes: List<PlanNode>): List<PlanCurve> = routeBoxes(edge, nodes.map { PlanBox(it.task.id, it.position, it.height) })
+
+  fun routeBoxes(edge: PlanEdge, nodes: List<PlanBox>): List<PlanCurve> {
+    val source = nodes.find { it.id == edge.source } ?: return emptyList()
+    val target = nodes.find { it.id == edge.target } ?: return emptyList()
     val start = PlanPoint(source.position.x + NODE_WIDTH, source.position.y + source.height / 2)
     val end = PlanPoint(target.position.x, target.position.y + target.height / 2)
     val obstructed = nodes.any { node ->
-      node.task.id != edge.source && node.task.id != edge.target &&
+      node.id != edge.source && node.id != edge.target &&
         node.position.x < maxOf(start.x, end.x) && node.position.x + NODE_WIDTH > minOf(start.x, end.x) &&
         node.position.y < maxOf(start.y, end.y) + 8 && node.position.y + node.height > minOf(start.y, end.y) - 8
     }
@@ -97,7 +107,7 @@ object ProjectGraph {
     return PlanCamera(zoom, before.x - anchor.x / zoom, before.y - anchor.y / zoom)
   }
 
-  fun fit(nodes: List<PlanNode>, width: Float, height: Float): PlanCamera {
+  fun fitBoxes(nodes: List<PlanBox>, width: Float, height: Float): PlanCamera {
     if (nodes.isEmpty() || width <= 0 || height <= 0) return PlanCamera()
     val left = nodes.minOf { it.position.x }
     val top = nodes.minOf { it.position.y } - 24f
@@ -106,4 +116,6 @@ object ProjectGraph {
     val zoom = minOf((width - 32).coerceAtLeast(1f) / (right - left), (height - 32).coerceAtLeast(1f) / (bottom - top), 1f).coerceAtLeast(.4f)
     return PlanCamera(zoom, (left + right) / 2 - width / (2 * zoom), (top + bottom) / 2 - height / (2 * zoom))
   }
+
+  fun fit(nodes: List<PlanNode>, width: Float, height: Float) = fitBoxes(nodes.map { PlanBox(it.task.id, it.position, it.height) }, width, height)
 }

@@ -211,3 +211,9 @@ Para verificar la UI en una instalación desechable, añadir `-PisolatedUiTests=
 No se han ejecutado nuevas escrituras autenticadas contra producción. La inspección con TalkBack en uso real y la rotación física siguen siendo comprobaciones manuales adicionales; las pruebas de semántica, tamaño y recreación no las sustituyen.
 
 Instalación solicitada posteriormente por el usuario el 2026-11-17: APK 0.7.0 instalado en el POCO como actualización con `adb install -r --no-incremental`, sin desinstalar ni borrar datos. El dispositivo confirma versión 0.7.0/código 8. Arranque en frío correcto (`Status: ok`), proceso activo y sin errores AndroidRuntime del proceso en la comprobación posterior. El gráfico se abre desde Proyectos al entrar en un proyecto y seleccionar «Gráfico».
+
+## Funcionalidades de proyectos
+
+Cada proyecto abre la lista «Funcionalidades» con su progreso y el grupo «Sin funcionalidad». Se pueden crear y editar funcionalidades, asignarles tareas y abrir sus diagramas. Las dependencias se validan en todo el proyecto y las referencias externas abren el plan de la otra funcionalidad. El gráfico de funcionalidades muestra conexiones de planificación y conexiones derivadas de las tareas. Cada diagrama conserva sus posiciones en el teléfono.
+
+El modo local conserva los datos en Room mediante la migración 3→4. Las cuentas usan la cola sin conexión del protocolo 1. Borrar una funcionalidad devuelve sus tareas a «Sin funcionalidad» y conserva sus dependencias. Las copias antiguas muestran el gráfico de proyecto hasta que una descarga anuncia las funcionalidades.

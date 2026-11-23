@@ -7,8 +7,8 @@ import com.studycalendar.core.*
 import org.json.JSONObject
 
 /** Presentation preferences only: never part of Room or the account outbox. */
-class ProjectGraphPreferences(context: Context, owner: String, projectId: String) {
-  private val prefs = context.getSharedPreferences("project-graph-$owner-$projectId", Context.MODE_PRIVATE)
+class ProjectGraphPreferences(context: Context, owner: String, projectId: String, diagram: String? = null) {
+  private val prefs = context.getSharedPreferences("project-graph-$owner-$projectId" + (diagram?.let { "-$it" } ?: ""), Context.MODE_PRIVATE)
   var graph: Boolean
     get() = prefs.getBoolean("graph", true)
     set(value) { prefs.edit().putBoolean("graph", value).apply() }
@@ -90,18 +90,23 @@ class ProjectGraphSession(initial: Map<String, PlanPoint> = emptyMap()) {
 
 /** Retains cameras/branch selection on rotation, without restoring them after process death. */
 class ProjectGraphSessions : ViewModel() {
-  private val sessions = mutableMapOf<Pair<String, String>, ProjectGraphSession>()
+  private val sessions = mutableMapOf<Triple<String, String, String?>, ProjectGraphSession>()
   private var active: Pair<String, String>? = null
   fun activate(owner: String, project: String?) {
     val next = project?.let { owner to it }
     if (active != next) {
-      active?.let { sessions[it] }?.apply {
-        cancelGestures(); if (root != null) full()
-        selected = null; camera = PlanCamera(); fitPending = true
+      active?.let { previous ->
+        sessions.filterKeys { it.first == previous.first && it.second == previous.second }.values.forEach { session ->
+          session.cancelGestures()
+          if (session.root != null) session.full()
+          session.selected = null
+          session.camera = PlanCamera()
+          session.fitPending = true
+        }
       }
       active = next
     }
   }
-  fun get(owner: String, project: String, preferences: ProjectGraphPreferences) =
-    sessions.getOrPut(owner to project) { ProjectGraphSession(preferences.read()) }
+  fun get(owner: String, project: String, preferences: ProjectGraphPreferences, diagram: String? = null) =
+    sessions.getOrPut(Triple(owner, project, diagram)) { ProjectGraphSession(preferences.read()) }
 }
