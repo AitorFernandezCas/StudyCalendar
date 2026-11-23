@@ -11,11 +11,14 @@ import java.util.UUID
 
 fun JSONObject.copyJson() = JSONObject(toString())
 private fun JSONObject.without(vararg names: String) = copyJson().apply { names.forEach(::remove) }
-private fun sameJson(a: Any?, b: Any?) = when {
-  a is JSONObject && b is JSONObject -> a.toString() == b.toString()
+private fun sameJson(a: Any?, b: Any?): Boolean = when {
+  a is JSONObject && b is JSONObject -> a.length() == b.length() && a.keys().asSequence().all { b.has(it) && sameJson(a.opt(it), b.opt(it)) }
   a is JSONArray && b is JSONArray -> a.toString() == b.toString()
   else -> a == b
 }
+
+private const val FEATURES_TABLE = "project_features"
+private const val FEATURE_LINKS_TABLE = "project_feature_links"
 
 /** One account document contains both its remote base and its durable outbox.
  * Mutate a copy, persist it atomically, then publish it. Preview Room data never
@@ -44,7 +47,20 @@ class AccountReplica(val document: JSONObject) {
   fun replaceRemote(snapshot: JSONObject) {
     require(snapshot.getString("owner") == owner)
     CloudSnapshot.parse(snapshot, owner)
+    require(operations.objects().none { entry -> !supports(snapshot, entry.getJSONObject("operation")) }) {
+      "El servidor todavía no permite enviar los cambios de funcionalidades. Se conservarán en el teléfono."
+    }
     document.put("snapshot", snapshot)
+  }
+
+  private fun supports(json: JSONObject, operation: JSONObject): Boolean {
+    val data = json.getJSONObject("data")
+    return when (operation.getString("entity")) {
+      FEATURES_TABLE -> data.has(FEATURES_TABLE)
+      FEATURE_LINKS_TABLE -> data.has(FEATURES_TABLE) && data.has(FEATURE_LINKS_TABLE)
+      "tasks" -> !operation.getJSONObject("changes").has("feature_id") || data.has(FEATURES_TABLE)
+      else -> true
+    }
   }
 
   private fun rows(json: JSONObject, table: String) = json.getJSONObject("data").getJSONArray(table)
@@ -67,7 +83,14 @@ class AccountReplica(val document: JSONObject) {
     val base = if (beforeState == null) JSONObject.NULL else JSONObject().put("revision", before?.optJSONObject("_sync")?.optLong("revision") ?: 0).put("state", beforeState)
     val op = JSONObject().put("protocol", 1).put("operation_id", UUID.randomUUID().toString()).put("entity", table).put("id", id)
       .put("action", action).put("base", base).put("changes", changes).put("context", context)
-    operations.put(JSONObject().put("operation", op).put("sent", false))
+    val entry = JSONObject().put("operation", op).put("sent", false)
+    if (action == "delete" && (table == FEATURES_TABLE || table == FEATURE_LINKS_TABLE)) {
+      val priorWrite = operations.objects().map { it.getJSONObject("operation") }.lastOrNull {
+        it.getString("entity") == table && it.getString("id") == id && it.getString("action") != "delete"
+      }
+      priorWrite?.let { entry.put("revision_receipt", it.getString("operation_id")) }
+    }
+    operations.put(entry)
   }
 
   private fun temporal(now: Instant): JSONObject {
@@ -86,11 +109,48 @@ class AccountReplica(val document: JSONObject) {
       require(project.status == ProjectStatus.ACTIVE || before?.nullable("project_id") == id) { "Selecciona un proyecto activo." }
     }
     task.categoryId?.let { id -> require(view.categories.any { it.id == id }) { "La categoría ya no está disponible." } }
+    Features.validateMembership(task, view.features.orEmpty().map(ProjectFeatureRow::feature))
     Planning.save(task, view.tasks.map(TaskRow::task))
-    val after = normalized(JSONObject(TaskRow.from(task).snapshot())).without("id")
+    val after = normalized(JSONObject(TaskRow.from(task).snapshot())).without("id", "feature_id")
       .put("all_day", task.date != null && task.allDay)
       .put("color", before?.optString("color") ?: "#4F46E5")
+    if (view.features != null && task.featureId != before?.nullable("feature_id")) {
+      after.put("feature_id", task.featureId ?: JSONObject.NULL)
+    }
     enqueue("tasks", task.id, if (before == null) "create" else "update", after)
+  }
+  fun editTask(original: Task, draft: Task) {
+    val current = requireNotNull(snapshot().tasks.find { it.id == original.id }) { "La tarea ya no está disponible." }.task()
+    save(Planning.withEdit(current, original, draft))
+  }
+
+  fun saveFeature(feature: ProjectFeature, original: ProjectFeature?) {
+    val view = snapshot()
+    val features = requireNotNull(view.features) { "Actualiza para gestionar funcionalidades." }.map(ProjectFeatureRow::feature)
+    require(view.projects.any { it.id == feature.projectId }) { "El proyecto ya no está disponible." }
+    val value = featureEdit(feature.normalized(), original, features.find { it.id == feature.id })
+    Features.validate(value, features)
+    val changes = ProjectFeatureRow.from(value).json().without("id")
+    if (original != null) changes.remove("project_id")
+    enqueue(FEATURES_TABLE, value.id, if (original == null) "create" else "update", changes)
+  }
+
+  fun deleteFeature(feature: ProjectFeature) {
+    val row = snapshot().features?.find { it.id == feature.id }
+    require(row?.feature() == feature) { "La funcionalidad ha cambiado. Revisa sus datos antes de eliminarla." }
+    enqueue(FEATURES_TABLE, feature.id, "delete")
+  }
+
+  fun createFeatureLink(link: ProjectFeatureLink) {
+    val view = snapshot()
+    val links = requireNotNull(view.featureLinks) { "Actualiza para guardar conexiones entre funcionalidades." }
+    Features.validateLink(link, view.features.orEmpty().map(ProjectFeatureRow::feature), links.map(ProjectFeatureLinkRow::link))
+    enqueue(FEATURE_LINKS_TABLE, link.id, "create", ProjectFeatureLinkRow.from(link).json().without("id"))
+  }
+
+  fun deleteFeatureLink(link: ProjectFeatureLink) {
+    require(snapshot().featureLinks?.any { it.link() == link } == true) { "La conexión ya no está disponible." }
+    enqueue(FEATURE_LINKS_TABLE, link.id, "delete")
   }
   fun setPrerequisites(id: String, expectedProjectId: String, expected: Set<String>, desired: Set<String>) {
     val current = requireNotNull(snapshot().tasks.find { it.id == id }) { "La tarea ya no está disponible." }.task()
@@ -178,13 +238,31 @@ class AccountReplica(val document: JSONObject) {
     if (action == "delete") {
       replace(json, table, id, null)
       if (table == "category") rows(json, "tasks").objects().filter { it.nullable("category_id") == id }.forEach { it.put("category_id", JSONObject.NULL) }
-      if (table == "projects") json.getJSONObject("data").put("tasks", JSONArray(rows(json, "tasks").objects().filter { it.nullable("project_id") != id }))
+      if (table == "projects") {
+        val data = json.getJSONObject("data")
+        listOf("tasks", FEATURES_TABLE, FEATURE_LINKS_TABLE).filter(data::has).forEach { collection ->
+          data.put(collection, JSONArray(rows(json, collection).objects().filter { it.nullable("project_id") != id }))
+        }
+      }
+      if (table == FEATURES_TABLE) {
+        val data = json.getJSONObject("data")
+        rows(json, "tasks").objects().filter { it.nullable("feature_id") == id }.forEach { it.put("feature_id", JSONObject.NULL) }
+        if (data.has(FEATURE_LINKS_TABLE)) {
+          data.put(FEATURE_LINKS_TABLE, JSONArray(rows(json, FEATURE_LINKS_TABLE).objects().filter {
+            it.getString("source_feature_id") != id && it.getString("target_feature_id") != id
+          }))
+        }
+      }
       if (table == "routine") listOf("routine_period", "routine_completion").forEach { child -> json.getJSONObject("data").put(child, JSONArray(rows(json, child).objects().filter { it.getString("routine_id") != id })) }
       return
     }
     val before = find(json, table, id) ?: op.optJSONObject("base")?.optJSONObject("state")?.copyJson()?.put("_sync", op.getJSONObject("base"))
     val row = before?.copyJson() ?: JSONObject().put("id", id).put("user_id", owner)
     changes.keys().forEach { row.put(it, changes.get(it)) }
+    if (table == "tasks" && before != null && !changes.has("feature_id") && !before.isNull("feature_id") &&
+      (before.nullable("project_id") != row.nullable("project_id") || row.optString("task_type") != "project")) {
+      row.put("feature_id", JSONObject.NULL)
+    }
     if (table == "tasks" && before == null) {
       if (!row.has("prerequisite_ids")) row.put("prerequisite_ids", JSONArray())
       if (!row.has("completed")) row.put("completed", false)
@@ -209,7 +287,14 @@ class AccountReplica(val document: JSONObject) {
     val entry = operations.objects().firstOrNull() ?: return null
     if (entry.has("result")) return null
     val op = entry.getJSONObject("operation")
+    require(supports(remote, op)) { "El servidor todavía no permite sincronizar estos cambios de funcionalidades." }
     if (!entry.getBoolean("sent")) {
+      val predecessor = entry.nullable("revision_receipt")?.let { document.getJSONObject("receipts").optJSONObject(it) }
+      val acknowledged = predecessor?.optJSONObject("row")?.optJSONObject("_sync")
+      val expected = op.optJSONObject("base")?.optJSONObject("state")
+      if (acknowledged != null && expected != null && sameJson(expected, acknowledged.optJSONObject("state"))) {
+        op.put("base", acknowledged.copyJson())
+      }
       op.getJSONObject("context").optString("routine_operation_id").takeIf { it.isNotBlank() }?.let { previous ->
         val receipt = document.getJSONObject("receipts").optJSONObject(previous)
         val revision = receipt?.optJSONObject("row")?.optJSONObject("_sync")?.optLong("revision")

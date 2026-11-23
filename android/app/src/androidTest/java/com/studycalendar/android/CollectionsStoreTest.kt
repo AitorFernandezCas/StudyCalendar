@@ -62,11 +62,49 @@ class CollectionsStoreTest {
 
   @Test fun migrationPreservesExistingTasksAndJournal() = runBlocking {
     val name = "collections-migration-test.db"
+    prepareLegacyDatabase(name, 1) {
+      execSQL("INSERT INTO tasks VALUES ('old-task', 'Conservar', '2026-11-13', '09:00', '10:00', 1, 0, NULL, 0, '[]')")
+      execSQL("INSERT INTO local_changes VALUES (1, 'old-operation', 'old-task', 'create', NULL, '{}', '2026-11-13T10:00:00Z')")
+    }
+    val database = upgradedDatabase(name)
+    try {
+      assertEquals("Conservar", database.calendar().tasks().single().title)
+      assertNull(database.calendar().tasks().single().categoryId)
+      assertNull(database.calendar().tasks().single().featureId)
+      assertTrue(database.calendar().features().isEmpty())
+      assertTrue(database.calendar().featureLinks().isEmpty())
+      assertTrue(database.calendar().categories().isEmpty())
+      assertEquals("old-operation", database.calendar().changes().single().operationId)
+      LocalCalendar(database).saveProject(Project(name = "Nuevo"))
+      assertEquals(2, database.calendar().changes().size)
+    } finally { database.close(); context.deleteDatabase(name) }
+  }
+
+  @Test fun versionThreeUpgradeRetainsProjectTasksAndTheirPrerequisites() = runBlocking {
+    val name = "feature-migration-test.db"
+    prepareLegacyDatabase(name, 3) {
+      execSQL("INSERT INTO projects (id, name, color, status) VALUES ('plan', 'Curso', '#4F46E5', 'active')")
+      execSQL("INSERT INTO tasks (id, title, allDay, completed, projectId, projectTask, prerequisites) VALUES ('prior', 'Leer', 0, 1, 'plan', 1, '[]')")
+      execSQL("INSERT INTO tasks (id, title, allDay, completed, projectId, projectTask, prerequisites) VALUES ('next', 'Escribir', 0, 0, 'plan', 1, '[\"prior\"]')")
+    }
+    val database = upgradedDatabase(name)
+    try {
+      val tasks = database.calendar().tasks().associateBy { it.id }
+      assertEquals(setOf("prior"), tasks.getValue("next").task().prerequisiteIds)
+      assertTrue(tasks.getValue("prior").completed)
+      assertTrue(tasks.values.all { it.projectId == "plan" && it.featureId == null })
+    } finally { database.close(); context.deleteDatabase(name) }
+  }
+
+  private fun upgradedDatabase(name: String) = Room.databaseBuilder(context, CalendarDatabase::class.java, name)
+    .addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3, CalendarDatabase.MIGRATION_3_4).build()
+
+  private fun prepareLegacyDatabase(name: String, version: Int, seed: SQLiteDatabase.() -> Unit) {
     context.deleteDatabase(name)
     // Reconstruct the actual exported v1 schema without the test helper's
     // serializer runtime, then let production Room perform/validate the upgrade.
     val schema = InstrumentationRegistry.getInstrumentation().context.assets
-      .open("com.studycalendar.android.CalendarDatabase/1.json")
+      .open("com.studycalendar.android.CalendarDatabase/$version.json")
       .bufferedReader().use { JSONObject(it.readText()).getJSONObject("database") }
     val file = context.getDatabasePath(name)
     file.parentFile!!.mkdirs()
@@ -83,21 +121,9 @@ class CollectionsStoreTest {
       }
       val setup = schema.getJSONArray("setupQueries")
       for (index in 0 until setup.length()) legacy.execSQL(setup.getString(index))
-      legacy.version = 1
-      legacy.execSQL("INSERT INTO tasks VALUES ('old-task', 'Conservar', '2026-11-13', '09:00', '10:00', 1, 0, NULL, 0, '[]')")
-      legacy.execSQL("INSERT INTO local_changes VALUES (1, 'old-operation', 'old-task', 'create', NULL, '{}', '2026-11-13T10:00:00Z')")
+      legacy.version = version
+      legacy.seed()
     }
-    // Opening with Room executes the migration and validates all v2 tables
-    // against the generated schema before any data can be read.
-    val database = Room.databaseBuilder(context, CalendarDatabase::class.java, name).addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3).build()
-    try {
-      assertEquals("Conservar", database.calendar().tasks().single().title)
-      assertNull(database.calendar().tasks().single().categoryId)
-      assertTrue(database.calendar().categories().isEmpty())
-      assertEquals("old-operation", database.calendar().changes().single().operationId)
-      LocalCalendar(database).saveProject(Project(name = "Nuevo"))
-      assertEquals(2, database.calendar().changes().size)
-    } finally { database.close(); context.deleteDatabase(name) }
   }
 
   @Test fun categoriesPersistAndDeletingOnePreservesTasks() = runBlocking {

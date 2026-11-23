@@ -138,6 +138,7 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
     save(current.copy(date = after.date, start = after.start, end = after.end, allDay = after.allDay))
   }
   override suspend fun save(task: Task) = edit { save(task) }
+  override suspend fun editTask(original: Task, draft: Task) = edit { editTask(original, draft) }
   override suspend fun setPrerequisites(id: String, expectedProjectId: String, expected: Set<String>, desired: Set<String>) = edit {
     setPrerequisites(id, expectedProjectId, expected, desired)
   }
@@ -148,6 +149,10 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
   override suspend fun deleteCategory(id: String) = edit { deleteCategory(id) }
   override suspend fun saveProject(project: Project) = edit { saveProject(project) }
   override suspend fun deleteProject(id: String) = edit { deleteProject(id) }
+  override suspend fun saveFeature(feature: com.studycalendar.core.ProjectFeature, original: com.studycalendar.core.ProjectFeature?) = edit { saveFeature(feature, original) }
+  override suspend fun deleteFeature(feature: com.studycalendar.core.ProjectFeature) = edit { deleteFeature(feature) }
+  override suspend fun createFeatureLink(link: com.studycalendar.core.ProjectFeatureLink) = edit { createFeatureLink(link) }
+  override suspend fun deleteFeatureLink(link: com.studycalendar.core.ProjectFeatureLink) = edit { deleteFeatureLink(link) }
   override suspend fun saveRoutine(id: String, title: String, color: String, active: Boolean, startsOn: LocalDate) = edit { saveRoutine(id, title, color, active, startsOn, Instant.now()) }
   override suspend fun completeRoutine(id: String, date: LocalDate, completed: Boolean) = edit { completeRoutine(id, date, completed, Instant.now()) }
   override suspend fun setRoutineCompletion(id: String, date: LocalDate, expected: Boolean, completed: Boolean) = edit { setRoutineCompletion(id, date, expected, completed, Instant.now()) }

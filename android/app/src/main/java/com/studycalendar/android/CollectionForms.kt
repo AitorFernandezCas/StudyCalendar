@@ -126,7 +126,8 @@ fun RoutineForm(existing: Routine?, today: LocalDate, busy: Boolean, dismiss: ()
 }
 
 @Composable
-fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, projects: List<Project>, categories: List<Category>, tasks: List<Task>, busy: Boolean, readOnly: Boolean = false, createProject: (Project, () -> Unit) -> Unit, seed: Task? = null, dismiss: () -> Unit, save: (Task) -> Unit) {
+fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, projects: List<Project>, categories: List<Category>, tasks: List<Task>, busy: Boolean, readOnly: Boolean = false, createProject: (Project, () -> Unit) -> Unit, seed: Task? = null,
+  features: List<ProjectFeature>? = null, initialFeatureId: String? = null, dismiss: () -> Unit, save: (Task) -> Unit) {
   val id = rememberSaveable { existing?.id ?: UUID.randomUUID().toString() }
   var title by rememberSaveable { mutableStateOf(existing?.title ?: "") }
   var day by rememberSaveable { mutableStateOf((existing?.date ?: seed?.date ?: date).toString()) }
@@ -134,6 +135,8 @@ fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, project
   var categoryId by rememberSaveable { mutableStateOf(existing?.categoryId) }
   var categoryMenu by remember { mutableStateOf(false) }
   var projectId by rememberSaveable { mutableStateOf(existing?.projectId ?: initialProject?.id) }
+  var featureId by rememberSaveable { mutableStateOf(existing?.featureId ?: initialFeatureId) }
+  var featureMenu by remember { mutableStateOf(false) }
   var undated by rememberSaveable { mutableStateOf(existing?.let { it.date == null } ?: (initialProject != null)) }
   var allDay by rememberSaveable { mutableStateOf(existing?.allDay ?: seed?.allDay ?: true) }
   var start by rememberSaveable { mutableStateOf(existing?.start?.toString() ?: seed?.start?.toString() ?: "09:00") }
@@ -142,6 +145,10 @@ fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, project
   var error by remember { mutableStateOf<String?>(null) }
   var projectMenu by remember { mutableStateOf(false) }
   var projectForm by remember { mutableStateOf(false) }
+  fun chooseProject(id: String?) {
+    if (projectId != id) featureId = null
+    projectId = id
+  }
   Dialog(onDismissRequest = { if (!busy) dismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     Surface(Modifier.fillMaxWidth().fillMaxHeight().systemBarsPadding().imePadding(), color = MaterialTheme.colorScheme.surface) {
       Column {
@@ -169,15 +176,31 @@ fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, project
               categories.forEach { category -> DropdownMenuItem(text = { Text(category.name) }, leadingIcon = { ColorMark(category.color) }, onClick = { categoryId = category.id; categoryMenu = false }) }
             }
           }
-          Choice("Tarea de proyecto", projectTask, !busy && !readOnly) { projectTask = it; if (!it) { projectId = null; undated = false } }
+          Choice("Tarea de proyecto", projectTask, !busy && !readOnly) { projectTask = it; if (!it) { chooseProject(null); undated = false } }
           if (projectTask) {
             Box(Modifier.fillMaxWidth()) {
               val selected = projects.find { it.id == projectId }
               OutlinedButton(enabled = !busy && !readOnly, onClick = { projectMenu = true }, modifier = Modifier.fillMaxWidth()) { Text(selected?.let { "${it.name} · ${it.status.label}" } ?: "Sin proyecto") }
               DropdownMenu(projectMenu, { projectMenu = false }) {
-                DropdownMenuItem(text = { Text("Sin proyecto") }, onClick = { projectId = null; projectMenu = false })
+                DropdownMenuItem(text = { Text("Sin proyecto") }, onClick = { chooseProject(null); projectMenu = false })
                 projects.filter { it.status == ProjectStatus.ACTIVE || it.id == existing?.projectId }.forEach { project ->
-                  DropdownMenuItem(text = { Text("${project.name} · ${project.status.label}") }, onClick = { projectId = project.id; projectMenu = false })
+                  DropdownMenuItem(text = { Text("${project.name} · ${project.status.label}") }, onClick = { chooseProject(project.id); projectMenu = false })
+                }
+              }
+            }
+            if (projectId != null && features != null) {
+              val available = features.filter { it.projectId == projectId }.sortedWith { a, b -> Overview.compareNames(a.name, b.name) }
+              val label = available.find { it.id == featureId }?.name
+                ?: if (featureId == null) "Sin funcionalidad" else "Funcionalidad no disponible"
+              Box(Modifier.fillMaxWidth()) {
+                OutlinedButton(enabled = !busy && !readOnly, onClick = { featureMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                  Text("Funcionalidad: $label")
+                }
+                DropdownMenu(featureMenu, { featureMenu = false }) {
+                  DropdownMenuItem(text = { Text("Sin funcionalidad") }, onClick = { featureId = null; featureMenu = false })
+                  available.forEach { feature ->
+                    DropdownMenuItem(text = { Text(feature.name) }, onClick = { featureId = feature.id; featureMenu = false })
+                  }
                 }
               }
             }
@@ -201,7 +224,10 @@ fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, project
             Text("Tareas previas", style = MaterialTheme.typography.titleSmall)
             Text("Deben estar completadas antes de completar esta tarea.")
             candidates.forEach { task ->
-              Choice(task.title, task.id in prerequisiteIds, !busy && !readOnly) { checked -> prerequisiteIds = if (checked) prerequisiteIds + task.id else prerequisiteIds - task.id }
+              val group = features?.find { it.id == task.featureId }?.name
+              Choice(listOfNotNull(task.title, group).joinToString(" · "), task.id in prerequisiteIds, !busy && !readOnly) { checked ->
+                prerequisiteIds = if (checked) prerequisiteIds + task.id else prerequisiteIds - task.id
+              }
             }
           }
         }
@@ -216,7 +242,8 @@ fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, project
                 val task = Task(id = id, title = title.trim(), date = if (undated) null else LocalDate.parse(day),
                   allDay = !undated && allDay, start = if (undated) null else if (allDay) existing?.start ?: LocalTime.of(9, 0) else LocalTime.parse(start),
                   end = if (undated) null else if (allDay) existing?.end ?: LocalTime.of(10, 0) else LocalTime.parse(end),
-                  completed = existing?.completed ?: false, projectTask = projectTask, projectId = projectId, prerequisiteIds = prerequisiteIds.toSet(), categoryId = categoryId)
+                  completed = existing?.completed ?: false, projectTask = projectTask, projectId = projectId,
+                  prerequisiteIds = prerequisiteIds.toSet(), categoryId = categoryId, featureId = featureId)
                 task.validate()
                 save(task)
               } catch (_: java.time.format.DateTimeParseException) { error = "Revisa la fecha y las horas." }
@@ -228,6 +255,6 @@ fun TaskForm(existing: Task?, date: LocalDate, initialProject: Project?, project
     }
   }
   if (projectForm) ProjectForm(null, busy, dismiss = { projectForm = false }, save = { project ->
-    createProject(project) { projectId = project.id; projectForm = false }
+    createProject(project) { chooseProject(project.id); projectForm = false }
   })
 }

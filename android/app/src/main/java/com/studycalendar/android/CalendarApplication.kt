@@ -7,6 +7,6 @@ class CalendarApplication : Application() {
   val connection by lazy { CloudConnection(this) }
   val store by lazy {
     LocalCalendar(Room.databaseBuilder(this, CalendarDatabase::class.java, "local-preview.db")
-      .addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3).build())
+      .addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3, CalendarDatabase.MIGRATION_3_4).build())
   }
 }

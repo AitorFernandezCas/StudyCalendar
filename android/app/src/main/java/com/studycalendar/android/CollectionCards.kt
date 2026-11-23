@@ -36,7 +36,7 @@ internal fun MoreActions(title: String, busy: Boolean, edit: () -> Unit, delete:
 
 @Composable
 fun TaskCard(task: Task, project: Project?, category: Category?, busy: Boolean, complete: () -> Unit, edit: () -> Unit, delete: () -> Unit,
-  today: LocalDate = LocalDate.now(ZoneId.of("Europe/Madrid")), allTasks: List<Task>? = null) {
+  today: LocalDate = LocalDate.now(ZoneId.of("Europe/Madrid")), allTasks: List<Task>? = null, featureName: String? = null) {
   val accent = (project?.color ?: category?.color)?.let { Color(android.graphics.Color.parseColor(it)) } ?: MaterialTheme.colorScheme.primary
   val blockers = if (task.completed) emptyList() else task.prerequisiteIds.filter { id -> allTasks?.find { it.id == id }?.completed != true }
   OutlinedCard(onClick = edit, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
@@ -55,7 +55,7 @@ fun TaskCard(task: Task, project: Project?, category: Category?, busy: Boolean, 
           task.start == null -> " · Sin horario"
           else -> " · ${task.start}–${task.end}"
         }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        val metadata = listOfNotNull(project?.name, category?.name).joinToString(" · ")
+        val metadata = listOfNotNull(project?.name, featureName, category?.name).joinToString(" · ")
         if (metadata.isNotEmpty()) Text(metadata, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (blockers.isNotEmpty()) Text("Antes: " + blockers.joinToString { id -> allTasks?.find { it.id == id }?.title ?: "Tarea previa" },
           style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

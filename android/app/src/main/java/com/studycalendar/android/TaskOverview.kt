@@ -25,6 +25,7 @@ internal fun LazyListScope.taskOverview(
   today: LocalDate, habitDate: LocalDate, busy: Boolean, expanded: Set<String>, toggle: (String) -> Unit,
   edit: (Task) -> Unit, complete: (Task) -> Unit, delete: (Task) -> Unit, completeHabit: (RoutineRecord) -> Unit,
   newTask: () -> Unit, newRoutine: () -> Unit, openProjects: () -> Unit, openRoutines: () -> Unit,
+  featureNames: Map<String, String> = emptyMap(),
 ) {
   val pending = Overview.pending(tasks, projects)
   val personal = pending.filter { !it.projectTask }
@@ -50,7 +51,7 @@ internal fun LazyListScope.taskOverview(
     Overview.dailyGroups(personal, today).filter { it.second.isNotEmpty() }.forEach { (label, group) ->
       item("daily-$label") { Text("$label (${group.size})", style = MaterialTheme.typography.labelLarge) }
       items(group, key = { "overview-${it.id}" }) { task -> TaskCard(task, null, categories.find { it.id == task.categoryId }, busy,
-        { complete(task) }, { edit(task) }, { delete(task) }, today, tasks) }
+        { complete(task) }, { edit(task) }, { delete(task) }, today, tasks, featureNames[task.featureId]) }
     }
   }
   item("project-heading") { SectionHeading("Tareas de proyectos", projectTasks.size, "projects" in expanded) { toggle("projects") } }
@@ -61,7 +62,7 @@ internal fun LazyListScope.taskOverview(
     groups.filter { it.second.isNotEmpty() }.forEachIndexed { index, (name, group) ->
       item("project-group-$index") { Text("$name (${group.size})", style = MaterialTheme.typography.labelLarge) }
       items(group, key = { "overview-${it.id}" }) { task -> TaskCard(task, projects.find { it.id == task.projectId }, categories.find { it.id == task.categoryId }, busy,
-        { complete(task) }, { edit(task) }, { delete(task) }, today, tasks) }
+        { complete(task) }, { edit(task) }, { delete(task) }, today, tasks, featureNames[task.featureId]) }
     }
     item("manage-projects") { TextButton(onClick = openProjects) { Text("Ver proyectos") } }
   }

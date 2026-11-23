@@ -26,9 +26,10 @@ data class TaskRow(
   val projectTask: Boolean,
   val prerequisites: String,
   val categoryId: String? = null,
+  val featureId: String? = null,
 ) {
   fun task() = Task(id, title, date?.let(LocalDate::parse), start?.let(LocalTime::parse), end?.let(LocalTime::parse), allDay, completed, projectId, projectTask,
-    JSONArray(prerequisites).let { array -> (0 until array.length()).map { array.getString(it) }.toSet() }, categoryId)
+    JSONArray(prerequisites).let { array -> (0 until array.length()).map { array.getString(it) }.toSet() }, categoryId, featureId)
 
   fun snapshot(): String = JSONObject().apply {
     put("id", id); put("title", title); put("date", date ?: JSONObject.NULL)
@@ -36,12 +37,13 @@ data class TaskRow(
     put("all_day", allDay); put("completed", completed)
     put("category_id", categoryId ?: JSONObject.NULL)
     put("project_id", projectId ?: JSONObject.NULL); put("task_type", if (projectTask) "project" else "daily")
+    put("feature_id", featureId ?: JSONObject.NULL)
     put("prerequisite_ids", JSONArray(prerequisites))
   }.toString()
 
   companion object {
     fun from(task: Task) = TaskRow(task.id, task.title.trim(), task.date?.toString(), task.start?.toString(), task.end?.toString(), task.allDay, task.completed,
-      task.projectId, task.projectTask, JSONArray(task.prerequisiteIds.toList()).toString(), task.categoryId)
+      task.projectId, task.projectTask, JSONArray(task.prerequisiteIds.toList()).toString(), task.categoryId, task.featureId)
   }
 }
 
@@ -81,8 +83,17 @@ interface CalendarDao {
   @Query("UPDATE tasks SET categoryId = NULL WHERE categoryId = :id") suspend fun clearCategory(id: String)
   @Query("SELECT * FROM projects ORDER BY name COLLATE NOCASE") fun observeProjects(): Flow<List<ProjectRow>>
   @Query("SELECT * FROM projects") suspend fun projects(): List<ProjectRow>
-  @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putProject(project: ProjectRow)
+  @Upsert suspend fun putProject(project: ProjectRow)
   @Query("DELETE FROM projects WHERE id = :id") suspend fun deleteProject(id: String)
+  @Query("SELECT * FROM project_features") fun observeFeatures(): Flow<List<ProjectFeatureRow>>
+  @Query("SELECT * FROM project_features") suspend fun features(): List<ProjectFeatureRow>
+  @Upsert suspend fun putFeature(feature: ProjectFeatureRow)
+  @Query("DELETE FROM project_features WHERE id = :id") suspend fun deleteFeature(id: String)
+  @Query("UPDATE tasks SET featureId = NULL WHERE featureId = :id") suspend fun clearFeature(id: String)
+  @Query("SELECT * FROM project_feature_links") fun observeFeatureLinks(): Flow<List<ProjectFeatureLinkRow>>
+  @Query("SELECT * FROM project_feature_links") suspend fun featureLinks(): List<ProjectFeatureLinkRow>
+  @Insert suspend fun putFeatureLink(link: ProjectFeatureLinkRow)
+  @Query("DELETE FROM project_feature_links WHERE id = :id") suspend fun deleteFeatureLink(id: String)
   @Transaction @Query("SELECT * FROM routines ORDER BY title COLLATE NOCASE") fun observeRoutines(): Flow<List<RoutineRecord>>
   @Transaction @Query("SELECT * FROM routines") suspend fun routines(): List<RoutineRecord>
   @Insert suspend fun insertRoutine(routine: RoutineRow)
@@ -91,11 +102,22 @@ interface CalendarDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putCompletion(completion: CompletionRow)
 }
 
-@Database(entities = [TaskRow::class, LocalChange::class, ProjectRow::class, RoutineRow::class, CompletionRow::class, CategoryRow::class], version = 3, exportSchema = true)
+@Database(entities = [TaskRow::class, LocalChange::class, ProjectRow::class, RoutineRow::class, CompletionRow::class,
+  CategoryRow::class, ProjectFeatureRow::class, ProjectFeatureLinkRow::class], version = 4, exportSchema = true)
 abstract class CalendarDatabase : RoomDatabase() {
   abstract fun calendar(): CalendarDao
 
   companion object {
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tasks ADD COLUMN featureId TEXT")
+        db.execSQL("CREATE TABLE project_features (id TEXT NOT NULL PRIMARY KEY, projectId TEXT NOT NULL, name TEXT NOT NULL, description TEXT, FOREIGN KEY(projectId) REFERENCES projects(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX index_project_features_projectId ON project_features(projectId)")
+        db.execSQL("CREATE TABLE project_feature_links (id TEXT NOT NULL PRIMARY KEY, projectId TEXT NOT NULL, sourceId TEXT NOT NULL, targetId TEXT NOT NULL, FOREIGN KEY(sourceId) REFERENCES project_features(id) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(targetId) REFERENCES project_features(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE UNIQUE INDEX index_project_feature_links_sourceId_targetId ON project_feature_links(sourceId, targetId)")
+        db.execSQL("CREATE INDEX index_project_feature_links_targetId ON project_feature_links(targetId)")
+      }
+    }
     val MIGRATION_2_3 = object : Migration(2, 3) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE tasks ADD COLUMN categoryId TEXT")
@@ -117,6 +139,8 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
   val tasks = database.calendar().observeTasks()
   val pending = database.calendar().observePending()
   val projects = database.calendar().observeProjects()
+  val features = database.calendar().observeFeatures()
+  val featureLinks = database.calendar().observeFeatureLinks()
   val categories = database.calendar().observeCategories()
   val routines = database.calendar().observeRoutines()
 
@@ -138,6 +162,7 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
       require(project.status == ProjectStatus.ACTIVE || previous?.projectId == id) { "Selecciona un proyecto activo." }
     }
     task.categoryId?.let { id -> require(database.calendar().categories().any { it.id == id }) { "La categoría ya no está disponible." } }
+    if (task.featureId != null) Features.validateMembership(task, database.calendar().features().map(ProjectFeatureRow::feature))
     Planning.save(task, rows.map(TaskRow::task))
     val row = TaskRow.from(task)
     val previous = rows.find { it.id == task.id }
@@ -145,6 +170,11 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
       database.calendar().put(row)
       database.calendar().append(LocalChange(entityId = task.id, kind = if (previous == null) "create" else "update", before = previous?.snapshot(), after = row.snapshot()))
     }
+  }
+
+  override suspend fun editTask(original: Task, draft: Task) = database.withTransaction {
+    val current = requireNotNull(database.calendar().tasks().find { it.id == original.id }) { "La tarea ya no está disponible." }.task()
+    save(Planning.withEdit(current, original, draft))
   }
 
   override suspend fun complete(id: String) = database.withTransaction {
@@ -214,6 +244,46 @@ class LocalCalendar(private val database: CalendarDatabase, private val clock: C
     }
     dao.append(LocalChange(entityId = id, kind = "project.delete", before = project.snapshot(), after = null))
     dao.deleteProject(id)
+  }
+
+  override suspend fun saveFeature(feature: ProjectFeature, original: ProjectFeature?) = database.withTransaction {
+    val dao = database.calendar()
+    val value = feature.normalized()
+    val features = dao.features()
+    val previous = features.find { it.id == value.id }
+    require(dao.projects().any { it.id == value.projectId }) { "El proyecto ya no está disponible." }
+    val row = ProjectFeatureRow.from(featureEdit(value, original, previous?.feature()))
+    Features.validate(row.feature(), features.map(ProjectFeatureRow::feature))
+    if (row != previous) {
+      dao.putFeature(row)
+      dao.append(LocalChange(entityId = row.id, kind = "feature.${if (previous == null) "create" else "update"}",
+        before = previous?.json()?.toString(), after = row.json().toString()))
+    }
+  }
+
+  override suspend fun deleteFeature(feature: ProjectFeature) = database.withTransaction {
+    val dao = database.calendar()
+    val row = requireNotNull(dao.features().find { it.id == feature.id }) { "La funcionalidad ya no está disponible." }
+    require(row.feature() == feature) { "La funcionalidad ha cambiado. Revisa sus datos antes de eliminarla." }
+    dao.clearFeature(feature.id)
+    dao.deleteFeature(feature.id)
+    dao.append(LocalChange(entityId = feature.id, kind = "feature.delete", before = row.json().toString(), after = null))
+  }
+
+  override suspend fun createFeatureLink(link: ProjectFeatureLink) = database.withTransaction {
+    val dao = database.calendar()
+    Features.validateLink(link, dao.features().map(ProjectFeatureRow::feature), dao.featureLinks().map(ProjectFeatureLinkRow::link))
+    val row = ProjectFeatureLinkRow.from(link)
+    dao.putFeatureLink(row)
+    dao.append(LocalChange(entityId = link.id, kind = "feature-link.create", before = null, after = row.json().toString()))
+  }
+
+  override suspend fun deleteFeatureLink(link: ProjectFeatureLink) = database.withTransaction {
+    val dao = database.calendar()
+    val row = requireNotNull(dao.featureLinks().find { it.id == link.id }) { "La conexión ya no está disponible." }
+    require(row.link() == link) { "La conexión ya no está disponible." }
+    dao.deleteFeatureLink(link.id)
+    dao.append(LocalChange(entityId = link.id, kind = "feature-link.delete", before = row.json().toString(), after = null))
   }
 
   override suspend fun saveRoutine(id: String, title: String, color: String, active: Boolean, startsOn: LocalDate) = database.withTransaction {
