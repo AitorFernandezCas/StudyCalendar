@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 
-enum class Destination(val label: String) { TASKS("Tareas"), CALENDAR("Calendario"), PROJECTS("Proyectos"), ROUTINES("Rutinas"), SETTINGS("Configuración") }
+enum class Destination(val label: String) { TASKS("Tareas"), CALENDAR("Calendario"), PROJECTS("Proyectos"), ROUTINES("Rutinas"), GOALS("Objetivos"), SETTINGS("Configuración") }
 
 // Small local vectors keep navigation independent of font glyphs or extra icon libraries.
 internal fun appIcon(name: String): ImageVector = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
@@ -21,6 +21,7 @@ internal fun appIcon(name: String): ImageVector = ImageVector.Builder(name, 24.d
       "Tareas" -> { moveTo(3f, 6f); lineTo(5f, 8f); lineTo(8f, 4f); moveTo(11f, 6f); lineTo(21f, 6f); moveTo(3f, 16f); lineTo(5f, 18f); lineTo(8f, 14f); moveTo(11f, 16f); lineTo(21f, 16f) }
       "Calendario" -> { moveTo(4f, 5f); lineTo(20f, 5f); lineTo(20f, 21f); lineTo(4f, 21f); close(); moveTo(4f, 10f); lineTo(20f, 10f); moveTo(8f, 2f); lineTo(8f, 7f); moveTo(16f, 2f); lineTo(16f, 7f) }
       "Proyectos" -> { moveTo(3f, 5f); lineTo(10f, 5f); lineTo(12f, 8f); lineTo(21f, 8f); lineTo(21f, 20f); lineTo(3f, 20f); close() }
+      "Objetivos" -> { moveTo(12f, 3f); curveTo(24f, 3f, 24f, 21f, 12f, 21f); curveTo(0f, 21f, 0f, 3f, 12f, 3f); moveTo(12f, 8f); curveTo(17f, 8f, 17f, 16f, 12f, 16f); curveTo(7f, 16f, 7f, 8f, 12f, 8f) }
       "Rutinas" -> { moveTo(20f, 10f); curveTo(18f, 2f, 6f, 2f, 4f, 10f); moveTo(4f, 5f); lineTo(4f, 10f); lineTo(9f, 10f); moveTo(4f, 14f); curveTo(6f, 22f, 18f, 22f, 20f, 14f); moveTo(20f, 19f); lineTo(20f, 14f); lineTo(15f, 14f) }
       "Atrás" -> { moveTo(15f, 4f); lineTo(7f, 12f); lineTo(15f, 20f) }
       "Siguiente" -> { moveTo(9f, 4f); lineTo(17f, 12f); lineTo(9f, 20f) }

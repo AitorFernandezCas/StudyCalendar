@@ -56,6 +56,7 @@ class AccountReplica(val document: JSONObject) {
   private fun supports(json: JSONObject, operation: JSONObject): Boolean {
     val data = json.getJSONObject("data")
     return when (operation.getString("entity")) {
+      "goals", "goal_reviews", "goal_schedules" -> data.has("goals")
       FEATURES_TABLE -> data.has(FEATURES_TABLE)
       FEATURE_LINKS_TABLE -> data.has(FEATURES_TABLE) && data.has(FEATURE_LINKS_TABLE)
       "tasks" -> !operation.getJSONObject("changes").has("feature_id") || data.has(FEATURES_TABLE)
@@ -84,7 +85,7 @@ class AccountReplica(val document: JSONObject) {
     val op = JSONObject().put("protocol", 1).put("operation_id", UUID.randomUUID().toString()).put("entity", table).put("id", id)
       .put("action", action).put("base", base).put("changes", changes).put("context", context)
     val entry = JSONObject().put("operation", op).put("sent", false)
-    if (action == "delete" && (table == FEATURES_TABLE || table == FEATURE_LINKS_TABLE)) {
+    if (action == "delete" && (table == FEATURES_TABLE || table == FEATURE_LINKS_TABLE || table == "goals")) {
       val priorWrite = operations.objects().map { it.getJSONObject("operation") }.lastOrNull {
         it.getString("entity") == table && it.getString("id") == id && it.getString("action") != "delete"
       }
@@ -99,6 +100,27 @@ class AccountReplica(val document: JSONObject) {
     val settings = data.getJSONArray("user_settings").objects().singleOrNull()
     return JSONObject().put("recorded_at", now.toString()).put("day", HabitClock.day(now, view.reset).date.toString())
       .put("reset_time", view.reset.format(DateTimeFormatter.ofPattern("HH:mm"))).put("settings_revision", settings?.optJSONObject("_sync")?.optLong("revision") ?: 0)
+  }
+
+  fun saveGoal(value: Goal, original: Goal?) {
+    value.validate()
+    requireNotNull(snapshot().goals) { "Actualiza para gestionar objetivos." }
+    require(snapshot().goals?.find { it.id == value.id } == original) { "El objetivo ha cambiado. Ábrelo de nuevo." }
+    enqueue("goals", value.id, if (original == null) "create" else "update", value.json().apply { remove("id") })
+  }
+  fun deleteGoal(value: Goal) {
+    require(snapshot().goals?.find { it.id == value.id } == value) { "El objetivo ha cambiado. Ábrelo de nuevo." }
+    enqueue("goals", value.id, "delete")
+  }
+  fun reviewGoal(value: GoalReview) {
+    value.validate()
+    require(snapshot().goals?.any { it.id == value.goalId } == true) { "El objetivo ya no está disponible." }
+    enqueue("goal_reviews", value.id, "create", value.json().apply { remove("id") })
+  }
+  fun saveGoalSchedule(value: GoalSchedule) {
+    value.validate()
+    requireNotNull(snapshot().goals) { "Actualiza para configurar avisos." }
+    enqueue("goal_schedules", value.id, if (find(render(), "goal_schedules", value.id) == null) "create" else "update", value.json().apply { remove("id") })
   }
 
   fun save(task: Task) {
@@ -237,6 +259,7 @@ class AccountReplica(val document: JSONObject) {
     }
     if (action == "delete") {
       replace(json, table, id, null)
+      if (table == "goals") json.getJSONObject("data").put("goal_reviews", JSONArray(rows(json, "goal_reviews").objects().filter { it.getString("goal_id") != id }))
       if (table == "category") rows(json, "tasks").objects().filter { it.nullable("category_id") == id }.forEach { it.put("category_id", JSONObject.NULL) }
       if (table == "projects") {
         val data = json.getJSONObject("data")

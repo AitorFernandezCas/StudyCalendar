@@ -17,7 +17,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
-class CloudConnection(context: Context, private val reader: CloudReader = CloudReader(SupabaseTransport())) : CalendarCommands {
+class CloudConnection(context: Context, private val reader: CloudReader = CloudReader(SupabaseTransport())) : CalendarCommands, GoalCommands {
   private val vault = SessionVault(context)
   private val directory = File(context.filesDir, "account-cache").apply { mkdirs() }
   private val localMutex = Mutex()
@@ -130,6 +130,10 @@ class CloudConnection(context: Context, private val reader: CloudReader = CloudR
     next.change()
     persist(next)
   }
+  override suspend fun saveGoal(value: com.studycalendar.core.Goal, original: com.studycalendar.core.Goal?) = edit { saveGoal(value, original) }
+  override suspend fun deleteGoal(value: com.studycalendar.core.Goal) = edit { deleteGoal(value) }
+  override suspend fun reviewGoal(value: com.studycalendar.core.GoalReview) = edit { reviewGoal(value) }
+  override suspend fun saveGoalSchedule(value: com.studycalendar.core.GoalSchedule) = edit { saveGoalSchedule(value) }
   suspend fun resolve(id: String, keepLocalFields: Set<String>?) = edit { resolve(id, keepLocalFields) }
   suspend fun saveSettings(settings: com.studycalendar.core.CalendarSettings) = edit { saveSettings(settings) }
   override suspend fun reschedule(before: Task, after: Task) = edit {
