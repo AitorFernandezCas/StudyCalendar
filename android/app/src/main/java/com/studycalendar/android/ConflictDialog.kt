@@ -76,6 +76,20 @@ fun ConflictDialog(entry: JSONObject, dismiss: () -> Unit, resolve: (String, Set
 }
 
 private fun fieldLabel(field: String) = when (field) {
+  "period" -> "Período"
+  "starts_on" -> "Fecha inicial"
+  "target" -> "Meta"
+  "unit" -> "Unidad"
+  "achieved" -> "Conseguido"
+  "goal_id" -> "Objetivo"
+  "recorded_at" -> "Fecha de revisión"
+  "amount" -> "Total alcanzado"
+  "note" -> "Notas"
+  "enabled" -> "Avisos activados"
+  "frequency" -> "Frecuencia"
+  "time" -> "Hora"
+  "weekday" -> "Día de semana"
+  "month_day" -> "Día de mes"
   "feature_id" -> "Funcionalidad"
   "description" -> "Descripción"
   "source_feature_id" -> "Funcionalidad previa"

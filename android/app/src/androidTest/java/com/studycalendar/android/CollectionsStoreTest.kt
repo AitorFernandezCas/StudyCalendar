@@ -97,7 +97,7 @@ class CollectionsStoreTest {
   }
 
   private fun upgradedDatabase(name: String) = Room.databaseBuilder(context, CalendarDatabase::class.java, name)
-    .addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3, CalendarDatabase.MIGRATION_3_4).build()
+    .addMigrations(CalendarDatabase.MIGRATION_1_2, CalendarDatabase.MIGRATION_2_3, CalendarDatabase.MIGRATION_3_4, CalendarDatabase.MIGRATION_4_5).build()
 
   private fun prepareLegacyDatabase(name: String, version: Int, seed: SQLiteDatabase.() -> Unit) {
     context.deleteDatabase(name)

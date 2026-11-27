@@ -217,3 +217,14 @@ Instalación solicitada posteriormente por el usuario el 2026-11-17: APK 0.7.0 i
 Cada proyecto abre la lista «Funcionalidades» con su progreso y el grupo «Sin funcionalidad». Se pueden crear y editar funcionalidades, asignarles tareas y abrir sus diagramas. Las dependencias se validan en todo el proyecto y las referencias externas abren el plan de la otra funcionalidad. El gráfico de funcionalidades muestra conexiones de planificación y conexiones derivadas de las tareas. Cada diagrama conserva sus posiciones en el teléfono.
 
 El modo local conserva los datos en Room mediante la migración 3→4. Las cuentas usan la cola sin conexión del protocolo 1. Borrar una funcionalidad devuelve sus tareas a «Sin funcionalidad» y conserva sus dependencias. Las copias antiguas muestran el gráfico de proyecto hasta que una descarga anuncia las funcionalidades.
+
+## Objetivos
+
+La pestaña Objetivos incorpora metas semanales, mensuales y anuales, revisiones con totales y notas, historial y avisos agrupados. Los horarios se configuran por tipo y usan Europe/Madrid. Room migra de 4 a 5 conservando datos. Las cuentas necesitan la capacidad goals del protocolo 1. Véase docs/goal-planning.md y el orden de despliegue en DEPLOYMENT.md.
+
+### Verificación de objetivos · 2026-11-23
+
+- Núcleo Kotlin, 39 pruebas correctas. PostgreSQL/PGlite aislado, contratos de objetivos y revisiones, recibos, conflictos, horarios y RLS correctos. Web compilada y 186 pruebas backend correctas.
+- POCO / Android 16, 25 pruebas instrumentadas correctas en la instalación aislada, incluidas cinco de objetivos, diez de colecciones/migraciones y diez de sincronización. Verificados creación mensual, total absoluto y notas, migración 4→5, persistencia, combinación de revisiones de dos réplicas y notificación agrupada con actualización y supresión de repeticiones.
+- HyperOS requirió aceptar las instalaciones USB y habilitar manualmente las notificaciones de la instalación aislada. El primer intento detectó un supuesto incorrecto del fixture sobre índices opcionales, corregido antes de la ejecución final.
+- La entrega usa versión 0.8.0/código 9 y certificado debug compatible. La migración compartida 20261123220724_android_goals se aplicó el 23 de noviembre de 2026 tras confirmar la copia privada. El contrato SQL autenticado pasó las comprobaciones con rollback. La sincronización con sesiones reales entre teléfonos sigue pendiente de comprobación manual. La recuperación tras un reinicio físico del teléfono queda como comprobación manual adicional.

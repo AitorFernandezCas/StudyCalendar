@@ -108,7 +108,7 @@ fun JSONArray.objects(): List<JSONObject> = (0 until length()).map { getJSONObje
 fun JSONObject.nullable(name: String): String? = if (isNull(name)) null else getString(name)
 
 data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow>, val routines: List<RoutineRecord>, val reset: LocalTime, val downloadedAt: String, val protocol: Int = 0, val categories: List<CategoryRow> = emptyList(), val calendar: com.studycalendar.core.CalendarSettings = com.studycalendar.core.CalendarSettings(),
-  val features: List<ProjectFeatureRow>? = null, val featureLinks: List<ProjectFeatureLinkRow>? = null) {
+  val features: List<ProjectFeatureRow>? = null, val featureLinks: List<ProjectFeatureLinkRow>? = null, val goals: List<com.studycalendar.core.Goal>? = null, val goalReviews: List<com.studycalendar.core.GoalReview> = emptyList(), val goalSchedules: List<com.studycalendar.core.GoalSchedule> = emptyList()) {
   companion object {
     fun parse(json: JSONObject, user: String): CloudSnapshot {
       require(json.getString("owner") == user) { "La copia pertenece a otra cuenta." }
@@ -135,7 +135,9 @@ data class CloudSnapshot(val tasks: List<TaskRow>, val projects: List<ProjectRow
         settings?.getString("routine_reset_time")?.let(LocalTime::parse) ?: LocalTime.MIDNIGHT, json.getString("downloadedAt"), json.optInt("protocol"), categories.sortedBy { it.name.lowercase() }, com.studycalendar.core.CalendarSettings(
           com.studycalendar.core.CalendarLayout.parse(settings?.optString("calendar_start_time", "00:00")?.take(5) ?: "00:00"),
           com.studycalendar.core.CalendarLayout.parse(settings?.optString("calendar_end_time", "24:00")?.take(5) ?: "24:00"), settings?.optString("week_start") == "sunday"),
-        features, featureLinks)
+        features, featureLinks, if (data.has("goals")) rows("goals").map(GoalRow::parse) else null,
+        if (data.has("goal_reviews")) rows("goal_reviews").map(GoalReviewRow::parse) else emptyList(),
+        if (data.has("goal_schedules")) rows("goal_schedules").map(GoalScheduleRow::parse) else emptyList())
     }
   }
 }

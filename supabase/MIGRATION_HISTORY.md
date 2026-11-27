@@ -98,3 +98,9 @@ El historial anterior y los datos existentes se conservaron. Las 52 tareas empez
 El conector registró `project_feature_links` como `20261118223658`. El archivo local original `20261118221651_project_feature_links.sql` se renombró conservando su SQL y SHA256 `B9906537ADC8196A013B5DF1554FC51C31C66683EAFA9191116D3F6DBE98BAA7`.
 
 Se conservó el historial anterior y se verificaron los datos existentes, RLS, las restricciones de borrado y el snapshot autenticado. Véase `DEPLOYMENT.md` para la publicación web.
+
+## Objetivos Android — aplicada el 23 de noviembre de 2026
+
+El conector registró android_goals con versión 20261123220724 tras la confirmación del usuario de una copia privada. El archivo original 20261123210325_android_goals.sql se renombró como 20261123220724_android_goals.sql, conservando su SQL y SHA256 C04F8009346A75CD9C63E7E53492C4338E8CCA61EBCCB82038E2BDBB7F03116C. El cambio añade objetivos, revisiones y horarios al protocolo 1 y se probó previamente con frontend/scripts/test-goals-db.mjs en PostgreSQL aislado.
+
+Coincidieron los recuentos y las huellas completas de las doce tablas anteriores de Task, las políticas existentes y routine_summaries. Las tablas nuevas tienen RLS y lectura propia para authenticated. El contrato SQL con rol authenticated pasó creación, revisión, horarios, recibos, snapshot, conflictos, aislamiento y eliminación en una transacción revertida. Tras el rollback se comprobaron cero filas en las tres tablas nuevas y las huellas anteriores. El asesor conserva los dos hallazgos previos documentados en DEPLOYMENT.md. La comprobación móvil con una sesión real sigue pendiente.

@@ -103,11 +103,19 @@ interface CalendarDao {
 }
 
 @Database(entities = [TaskRow::class, LocalChange::class, ProjectRow::class, RoutineRow::class, CompletionRow::class,
-  CategoryRow::class, ProjectFeatureRow::class, ProjectFeatureLinkRow::class], version = 4, exportSchema = true)
+  CategoryRow::class, ProjectFeatureRow::class, ProjectFeatureLinkRow::class, GoalRow::class, GoalReviewRow::class, GoalScheduleRow::class], version = 5, exportSchema = true)
 abstract class CalendarDatabase : RoomDatabase() {
   abstract fun calendar(): CalendarDao
+  abstract fun goals(): GoalDao
 
   companion object {
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+      override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE goals (id TEXT NOT NULL PRIMARY KEY, payload TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE goal_reviews (id TEXT NOT NULL PRIMARY KEY, goalId TEXT NOT NULL, payload TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE goal_schedules (id TEXT NOT NULL PRIMARY KEY, payload TEXT NOT NULL)")
+      }
+    }
     val MIGRATION_3_4 = object : Migration(3, 4) {
       override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE tasks ADD COLUMN featureId TEXT")

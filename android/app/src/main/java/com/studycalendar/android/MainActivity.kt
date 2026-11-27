@@ -39,6 +39,23 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
   private val connection = (application as CalendarApplication).connection
   val cloud = connection.state
   val readOnly get() = cloud.value.session != null && cloud.value.snapshot?.protocol != 1
+  var goalReviewInbox by mutableStateOf(false)
+  val goalStore = (application as CalendarApplication).goals
+  fun goalAction(onSuccess: () -> Unit = {}, action: suspend GoalCommands.() -> Unit) {
+    if (busy || (cloud.value.working && cloud.value.session == null)) return
+    busy = true
+    viewModelScope.launch {
+      try {
+        val commands: GoalCommands = if (cloud.value.session == null) goalStore else connection
+        commands.action()
+        onSuccess()
+        if (cloud.value.session != null) SyncScheduling.enqueue(getApplication())
+      } catch (failure: Exception) {
+        if (failure is kotlinx.coroutines.CancellationException) throw failure
+        error = failure.message ?: "No se pudo guardar el objetivo."
+      } finally { busy = false }
+    }
+  }
   val tasks = store.tasks
   private val preferences = application.getSharedPreferences("calendar-local", android.content.Context.MODE_PRIVATE)
   var localSettings by mutableStateOf(CalendarSettings(preferences.getInt("start", 0), preferences.getInt("end", 1440), preferences.getBoolean("sunday", false)))
@@ -93,10 +110,17 @@ class CalendarViewModel(application: android.app.Application) : AndroidViewModel
 }
 
 class MainActivity : ComponentActivity() {
+  private var openGoals by mutableStateOf(false)
+  override fun onResume() { super.onResume(); (application as CalendarApplication).refreshGoalNotifications() }
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    openGoals = intent.getBooleanExtra("goals", false)
+  }
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    openGoals = intent.getBooleanExtra("goals", false)
     setContent {
-      StudyCalendarTheme { CalendarApp() }
+      StudyCalendarTheme { CalendarApp(openGoals = openGoals, consumed = { openGoals = false }) }
     }
   }
 }
@@ -119,13 +143,13 @@ private fun habitToday(reset: java.time.LocalTime): LocalDate {
 }
 
 @Composable
-private fun CalendarApp(model: CalendarViewModel = viewModel()) {
+private fun CalendarApp(model: CalendarViewModel = viewModel(), openGoals: Boolean = false, consumed: () -> Unit = {}) {
   val cloud by model.cloud.collectAsStateWithLifecycle()
-  key(cloud.session?.userId ?: "local") { CalendarContent(model) }
+  key(cloud.session?.userId ?: "local") { CalendarContent(model, openGoals, consumed) }
 }
 
 @Composable
-private fun CalendarContent(model: CalendarViewModel) {
+private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consumed: () -> Unit) {
   val graphSessions: ProjectGraphSessions = viewModel()
   val calendarDrag = remember { CalendarDragController() }
   val rows by model.tasks.collectAsStateWithLifecycle(initialValue = null)
@@ -141,6 +165,7 @@ private fun CalendarContent(model: CalendarViewModel) {
   var selectedDate by rememberSaveable { mutableStateOf<String?>(null) }
   val date = selectedDate?.let(LocalDate::parse) ?: today
   var screen by rememberSaveable { mutableStateOf(Destination.TASKS) }
+  LaunchedEffect(openGoals, cloud.session?.userId, cloud.working) { if (openGoals && (!cloud.working || cloud.session != null)) { screen = Destination.GOALS; model.goalReviewInbox = true; consumed() } }
   var previousScreen by rememberSaveable { mutableStateOf(Destination.TASKS) }
   val owner = cloud.session?.userId ?: "local"
   val context = LocalContext.current
@@ -281,7 +306,7 @@ private fun CalendarContent(model: CalendarViewModel) {
   }, floatingActionButton = {
     val creatingFeature = screen == Destination.PROJECTS && project != null && features != null && group == null
     val inactiveTaskPlan = screen == Destination.PROJECTS && project != null && project.status != ProjectStatus.ACTIVE && !creatingFeature
-    if (loaded && !model.busy && (!cloud.working || cloud.session != null) && !model.readOnly && !inactiveTaskPlan) {
+    if (screen != Destination.GOALS && loaded && !model.busy && (!cloud.working || cloud.session != null) && !model.readOnly && !inactiveTaskPlan) {
       val create = {
         when (screen) {
           Destination.SETTINGS -> { editingCategory = null; categoryForm = true }
@@ -330,6 +355,7 @@ private fun CalendarContent(model: CalendarViewModel) {
       if (!loaded) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (cloud.error != null) "No se pudieron cargar los datos." else "Cargando tus datos…") }
 
       else when (screen) {
+        Destination.GOALS -> item { GoalsScreen(model) }
         Destination.TASKS -> taskOverview(tasks, projects, categories, routines.orEmpty(), today, habitDate, model.busy || model.readOnly,
           expanded, toggleSection, editTask, completeTask, { deletingTask = it }, completeHabit,
           newTask = { newTask() },

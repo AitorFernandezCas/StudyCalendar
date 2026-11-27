@@ -474,3 +474,17 @@ El 18 de noviembre de 2026 se aplicó solo esta migración al proyecto compartid
 3. En un proyecto desechable, comprobar creación, recarga y borrado de conexiones entre funcionalidades, conservación de flechas derivadas y ausencia de cambios en las reglas de completado de tareas.
 
 La migración se aplicó al proyecto compartido el 18 de noviembre de 2026 tras confirmar la copia privada. Coincidieron los recuentos y las huellas de las ocho tablas de StudyCalendar, incluidas las 53 tareas y la funcionalidad existente. Se verificaron RLS, permisos, la validación de ciclos activa y el snapshot autenticado del protocolo 1 con la colección de conexiones. El asesor de seguridad no añadió incidencias. La publicación en Render sigue pendiente.
+
+## Objetivos Android
+
+La versión con objetivos requiere `20261123220724_android_goals.sql`, posterior a las migraciones de funcionalidades y enlaces. Antes de aplicarla al proyecto compartido, comprobar el historial remoto y confirmar una copia privada recuperable siguiendo el procedimiento de este documento. Validar primero con `node frontend/scripts/test-goals-db.mjs` usando PGlite en memoria. Aplicar manualmente la migración y comprobar RLS, sync_snapshot y sync_apply con una cuenta desechable antes de entregar el APK. La UI detecta goals en la descarga para habilitar operaciones de cuenta. Los clientes anteriores pueden seguir utilizando protocolo 1.
+
+La migración añade goals, goal_reviews y goal_schedules con acceso de lectura propio y escrituras mediante el contrato autenticado. El APK migra Room 4→5. Cada teléfono solicita su permiso de notificaciones y programa avisos aproximados. Habilitar horarios después de instalar. La restauración de horarios de cuenta requiere sincronización. Comprobar entrega con la app cerrada, navegación desde el aviso, denegación del permiso y recuperación tras reinicio en un teléfono de pruebas.
+
+La migración se aplicó el 23 de noviembre de 2026 tras la confirmación del usuario de una copia privada. El conector registró android_goals con versión 20261123220724. El archivo local se alineó con esa versión y conserva SHA256 C04F8009346A75CD9C63E7E53492C4338E8CCA61EBCCB82038E2BDBB7F03116C.
+
+Se verificaron las huellas completas y los recuentos de las doce tablas anteriores de Task, incluidas 55 tareas, 64 completaciones de rutinas y las tres tablas de sincronización. También coincidieron la huella de las políticas anteriores y la de routine_summaries. Las tres tablas de objetivos tienen RLS, lectura propia para authenticated y escrituras mediante sync_apply. Las funciones mantienen search_path=pg_catalog y deniegan ejecución anónima.
+
+En una transacción revertida sobre la base de producción, con rol authenticated y claims de propietario, pasaron creación de objetivo, revisión y horario, recibo idempotente, snapshot de protocolo 1, conflicto de edición obsoleta, aislamiento de otra identidad y borrado con cascada. Se comprobó después que las tablas de objetivos tenían cero filas y que las huellas anteriores seguían coincidiendo. Es una comprobación SQL del contrato autenticado. La sincronización mediante una sesión real desde el teléfono y la recuperación tras reinicio físico siguen pendientes de comprobación manual.
+
+El asesor de seguridad conserva sus dos hallazgos previos, correspondientes a la entrada transaccional sync_apply y a la protección de contraseñas filtradas. La justificación del RPC y los enlaces de los hallazgos figuran en la sección de sincronización offline. Una reversión del APK conserva las tablas compartidas.
