@@ -90,48 +90,52 @@ export default function RoutineDetail({ session, routine, today, weekStart, busy
       <h2 ref={heading} tabIndex={-1}>{routine.title}</h2>
       <button className="routine-detail-action" disabled={busy} onClick={onEdit}>Editar</button>
     </div>
-    <dl className="routine-detail-stats">
-      <div><dt>Racha actual</dt><dd>{routine.current_streak} {routine.current_streak === 1 ? 'día' : 'días'}</dd></div>
-      <div><dt>Racha máxima</dt><dd>{routine.max_streak} {routine.max_streak === 1 ? 'día' : 'días'}</dd></div>
-      <div className="routine-detail-last-completion">
-        <dt>Último día completado</dt>
-        <dd>{lastCompleted ? <time dateTime={lastCompleted}>{summaryDateFormat.format(new Date(lastCompleted))}</time>
-          : history ? 'Aún sin completados' : error ? 'No disponible' : 'Cargando…'}</dd>
+    <div className="routine-detail-layout">
+      <div className="routine-detail-summary">
+        <dl className="routine-detail-stats">
+          <div><dt>Racha actual</dt><dd>{routine.current_streak} {routine.current_streak === 1 ? 'día' : 'días'}</dd></div>
+          <div><dt>Racha máxima</dt><dd>{routine.max_streak} {routine.max_streak === 1 ? 'día' : 'días'}</dd></div>
+          <div className="routine-detail-last-completion">
+            <dt>Último día completado</dt>
+            <dd>{lastCompleted ? <time dateTime={lastCompleted}>{summaryDateFormat.format(new Date(lastCompleted))}</time>
+              : history ? 'Aún sin completados' : error ? 'No disponible' : 'Cargando…'}</dd>
+          </div>
+        </dl>
+        {routine.due_today && <button className={routine.completed_today ? 'routine-detail-action' : 'routine-detail-action primary'} disabled={busy} onClick={onComplete}>
+          {routine.completed_today ? 'Marcar hoy como pendiente' : 'Completar hoy'}
+        </button>}
       </div>
-    </dl>
-    {routine.due_today && <button className={routine.completed_today ? 'routine-detail-action' : 'routine-detail-action primary'} disabled={busy} onClick={onComplete}>
-      {routine.completed_today ? 'Marcar hoy como pendiente' : 'Completar hoy'}
-    </button>}
-    {error && <div className="routine-load-state" role="alert"><p>No se pudo cargar el historial.</p><button onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
-    {!history && !error && <p role="status">{slow ? 'La conexión está tardando más de lo habitual' : 'Cargando historial…'}</p>}
-    {history && <>
-      {!first && <p>Esta rutina aún no tiene historial.</p>}
-      {first && first > today && <p>Empieza el {formatDay(first)}.</p>}
-      <div className="routine-history">
-        <div className="routine-history-nav">
-          <button aria-label="Mes anterior" disabled={month <= firstMonth} onClick={() => shift(-1)}>‹</button>
-          <h3 aria-live="polite">{monthFormat.format(monthStart)}</h3>
-          <button aria-label="Mes siguiente" disabled={month >= currentMonth} onClick={() => shift(1)}>›</button>
-        </div>
-        <div className="routine-history-grid" role="group" aria-label="Historial mensual">
-          {labels.map(label => <span className="routine-history-weekday" key={label}>{label}</span>)}
-          {Array.from({ length: blanks }, (_, index) => <span key={'empty-' + index} aria-hidden="true" />)}
-          {Array.from({ length: monthEnd.getUTCDate() }, (_, index) => {
-            const day = index + 1
-            const date = month + '-' + String(day).padStart(2, '0')
-            const status = dayStatus(date, today, routine, history, completed, first)
-            if (!status) return <span key={date} className="routine-history-day" aria-label={formatDay(date)}>{day}</span>
-            return <button key={date} className={'routine-history-day ' + status} aria-label={formatDay(date) + ', ' + statuses[status].label}
-              aria-current={date === today ? 'date' : undefined} aria-pressed={date === selected} onClick={() => setSelected(date)}>
-              {day}<span aria-hidden="true">{statuses[status].symbol}</span>
-            </button>
-          })}
-        </div>
-        <ul className="routine-history-legend" aria-label="Estados del historial">
-          {Object.entries(statuses).map(([key, status]) => <li key={key}><span className={key} aria-hidden="true">{status.symbol}</span>{status.label}</li>)}
-        </ul>
-        {selected && selectedStatus && <p role="status">{formatDay(selected)} · {statuses[selectedStatus].label}</p>}
-      </div>
-    </>}
+      <section className="routine-history" aria-label="Historial de la rutina">
+        {error && <div className="routine-load-state" role="alert"><p>No se pudo cargar el historial.</p><button onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
+        {!history && !error && <p role="status">{slow ? 'La conexión está tardando más de lo habitual' : 'Cargando historial…'}</p>}
+        {history && <>
+          {!first && <p>Esta rutina aún no tiene historial.</p>}
+          {first && first > today && <p>Empieza el {formatDay(first)}.</p>}
+          <div className="routine-history-nav">
+            <button aria-label="Mes anterior" disabled={month <= firstMonth} onClick={() => shift(-1)}>‹</button>
+            <h3 aria-live="polite">{monthFormat.format(monthStart)}</h3>
+            <button aria-label="Mes siguiente" disabled={month >= currentMonth} onClick={() => shift(1)}>›</button>
+          </div>
+          <div className="routine-history-grid" role="group" aria-label="Historial mensual">
+            {labels.map(label => <span className="routine-history-weekday" key={label}>{label}</span>)}
+            {Array.from({ length: blanks }, (_, index) => <span key={'empty-' + index} aria-hidden="true" />)}
+            {Array.from({ length: monthEnd.getUTCDate() }, (_, index) => {
+              const day = index + 1
+              const date = month + '-' + String(day).padStart(2, '0')
+              const status = dayStatus(date, today, routine, history, completed, first)
+              if (!status) return <span key={date} className="routine-history-day" aria-label={formatDay(date)}>{day}</span>
+              return <button key={date} className={'routine-history-day ' + status} aria-label={formatDay(date) + ', ' + statuses[status].label}
+                aria-current={date === today ? 'date' : undefined} aria-pressed={date === selected} onClick={() => setSelected(date)}>
+                {day}<span aria-hidden="true">{statuses[status].symbol}</span>
+              </button>
+            })}
+          </div>
+          <ul className="routine-history-legend" aria-label="Estados del historial">
+            {Object.entries(statuses).map(([key, status]) => <li key={key}><span className={key} aria-hidden="true">{status.symbol}</span>{status.label}</li>)}
+          </ul>
+          {selected && selectedStatus && <p role="status">{formatDay(selected)} · {statuses[selectedStatus].label}</p>}
+        </>}
+      </section>
+    </div>
   </section>
 }
