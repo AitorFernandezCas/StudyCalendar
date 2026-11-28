@@ -11,6 +11,12 @@ def list_routines():
     return jsonify({**result.day.metadata(), "routines": serialize(result.routines)})
 
 
+@blueprint.get("/api/routines/<uuid:routine_id>/history")
+@require_user
+def routine_history(routine_id):
+    return jsonify(serialize(services().routines.history(str(routine_id))))
+
+
 @blueprint.post("/api/routines")
 @require_user
 def create_routine():

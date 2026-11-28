@@ -53,6 +53,18 @@ _Avoid_: Habit schedule, calendar habit
 The date to which a daily habit's completion belongs, determined by the account's time zone and configured day boundary. It does not change merely because the phone moves to another time zone.
 _Avoid_: Phone date when it differs from the habit day
 
+**Completed habit day (completada)**:
+A habit day for which the routine has a completion mark.
+
+**Missed habit day (sin completar)**:
+A past habit day on which the routine was due and has no completion mark.
+
+**Pending today (pendiente hoy)**:
+A routine that is due on the current habit day and has no completion mark for that day.
+
+**Paused habit day (en pausa)**:
+A habit day during a break after a routine has started, with no completion mark for that day.
+
 **Reminder postponement (aplazamiento de un recordatorio)**:
 Moving a reminder to a later time without changing the associated task's schedule or the habit day to which it belongs.
 _Avoid_: Rescheduling the task, moving the habit to another day

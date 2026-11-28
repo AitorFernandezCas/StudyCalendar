@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
-from .domain import RoutineSummary, Completion, routine_command
+from .domain import RoutineSummary, RoutineHistory, Completion, routine_command
 from .ports import RoutineRepository, RoutineSummaries
 from ..shared.domain import BusinessError, Day, User
 from ..shared.ports import Clock
@@ -36,6 +36,11 @@ class RoutineService:
     def list(self) -> Snapshot:
         day = self.day()
         return Snapshot(day, self.summaries.summaries(day.date))
+
+    def history(self, identifier: str) -> RoutineHistory:
+        if self.repository.get(identifier) is None:
+            raise BusinessError("Rutina no encontrada.", "not_found")
+        return self.repository.history(identifier, self.day().date)
 
     def create(self, raw: Any) -> RoutineSummary:
         payload = routine_command(raw, creating=True).payload()

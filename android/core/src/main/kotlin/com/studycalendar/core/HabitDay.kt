@@ -27,6 +27,23 @@ data class ActivePeriod(val start: LocalDate, val end: LocalDate? = null) {
 }
 data class Streak(val current: Int, val maximum: Int)
 
+enum class RoutineDayStatus { COMPLETE, MISSED, PAUSED, PENDING }
+
+class RoutineHistory(private val routine: Routine, private val today: LocalDate, completed: Set<LocalDate>) {
+  private val completedThroughToday = completed.filterTo(mutableSetOf()) { it <= today }
+  val firstDay = listOfNotNull(routine.periods.minOfOrNull { it.start }, completedThroughToday.minOrNull()).minOrNull()
+  val lastCompletedDay = completedThroughToday.maxOrNull()
+
+  fun status(date: LocalDate): RoutineDayStatus? = when {
+    date > today -> null
+    date in completedThroughToday -> RoutineDayStatus.COMPLETE
+    date == today && routine.due(today) -> RoutineDayStatus.PENDING
+    firstDay == null || date < firstDay -> null
+    date < today && routine.periods.any { it.includes(date) } -> RoutineDayStatus.MISSED
+    else -> RoutineDayStatus.PAUSED
+  }
+}
+
 fun streaks(today: LocalDate, active: Boolean, periods: List<ActivePeriod>, completed: Set<LocalDate>): Streak {
   // Validated completions remain history even after the active period is closed.
   // Match routine_summaries: periods determine eligibility, not historical runs.

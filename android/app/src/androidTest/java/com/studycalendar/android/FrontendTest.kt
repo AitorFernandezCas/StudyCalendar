@@ -62,7 +62,7 @@ class FrontendTest {
           LazyColumn {
             taskOverview(tasks, listOf(hidden), emptyList(), listOf(habit), day, day, false, setOf("daily", "projects", "habits"), {}, {},
               complete = { changed -> previous = changed; tasks = tasks.map { if (it.id == changed.id) it.copy(completed = true) else it } }, delete = {}, completeHabit = {},
-              newTask = {}, newRoutine = {}, openProjects = {}, openRoutines = {})
+              newTask = {}, newRoutine = {}, openProjects = {}, openRoutines = {}, openRoutine = {})
           }
         }
       }
@@ -130,7 +130,7 @@ class FrontendTest {
             item { Text("StudyCalendar", color = MaterialTheme.colorScheme.primary); Text("Todas las tareas", style = MaterialTheme.typography.headlineLarge) }
             taskOverview(listOf(personal, personal.copy(id = "overdue", title = "Revisar los apuntes", date = day.minusDays(1)),
               personal.copy(id = "project-task", title = "Preparar ejercicios", projectTask = true, projectId = project.id)), listOf(project), emptyList(), listOf(habit),
-              day, day, false, setOf("daily", "projects", "habits"), {}, {}, {}, {}, {}, {}, {}, {}, {})
+              day, day, false, setOf("daily", "projects", "habits"), {}, {}, {}, {}, {}, {}, {}, {}, {}, {})
           }
         }
       }

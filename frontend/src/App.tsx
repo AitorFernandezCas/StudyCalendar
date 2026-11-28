@@ -13,6 +13,7 @@ import { supabase, authCallbackFailed } from './lib/supabase'
 import { taskSchedule, droppedTaskSchedule } from './lib/taskScheduling'
 import { useScreenRoute, type Screen } from './lib/navigation'
 import { useRoutineHabits } from './lib/useRoutineHabits'
+import RoutineDetail from './components/RoutineDetail'
 import { useSettings } from './lib/useSettings'
 import { PreferencesForm } from './components/PreferencesForm'
 import { calendarWeekStart, visibleTimedTask } from './lib/calendarPreferences'
@@ -161,7 +162,7 @@ function RoutineLoadState({ habits }: { habits: ReturnType<typeof useRoutineHabi
   return habits.error ? <div className="routine-load-state" role="alert"><p>{habits.error}</p><button onClick={() => void habits.refresh()}>Reintentar</button></div> : <p className="overview-empty" role="status">Cargando rutinas…</p>
 }
 
-function DailyHabits({ habits, busy, onComplete }: { habits: ReturnType<typeof useRoutineHabits>; busy: boolean; onComplete: (routine: ApiRoutine) => void }) {
+function DailyHabits({ habits, busy, onComplete, onOpen }: { habits: ReturnType<typeof useRoutineHabits>; busy: boolean; onComplete: (routine: ApiRoutine) => void; onOpen: (id: string) => void }) {
   if (!habits.ready) return <RoutineLoadState habits={habits} />
   const due = habits.routines.filter(routine => routine.due_today).sort((a, b) => a.title.localeCompare(b.title, 'es') || a.id.localeCompare(b.id))
   if (!due.length) return <p className="overview-empty">No hay rutinas para hoy.</p>
@@ -170,7 +171,7 @@ function DailyHabits({ habits, busy, onComplete }: { habits: ReturnType<typeof u
     return <section className="habit-group" key={String(completed)}><h4>{completed ? 'Completadas hoy' : 'Pendientes de hoy'} <span>{group.length}</span></h4>
       {group.length ? <div className="overview-list">{group.map(routine => <article className={'overview-work-row daily-habit' + (completed ? ' done' : '')} key={routine.id} style={{ '--task-color': routine.color } as React.CSSProperties}>
         <button className="row-completion" disabled={busy} aria-pressed={completed} title={completed ? 'Marcar como pendiente' : 'Marcar como completada'} aria-label={(completed ? 'Marcar como pendiente ' : 'Marcar como completada ') + routine.title} onClick={() => onComplete(routine)}><CompletionIcon completed={completed} /></button>
-        <div className="row-content"><strong>{routine.title}</strong><RoutineStreaks routine={routine} /></div>
+        <div className="row-content"><button className="routine-row-edit" onClick={() => onOpen(routine.id)}><strong>{routine.title}</strong></button><RoutineStreaks routine={routine} /></div>
       </article>)}</div> : <p className="overview-empty">{completed ? 'Todavía no hay rutinas completadas hoy.' : 'Has completado todas las rutinas de hoy.'}</p>}
     </section>
   })}</div>
@@ -355,7 +356,7 @@ function ProjectsView({ onBack, ...props }: ProjectListProps & { onBack: () => v
 
 type RoutineListProps = {
   routines: ApiRoutine[]
-  onEditRoutine: (routine: ApiRoutine) => void
+  onOpenRoutine: (id: string) => void
   onToggleRoutine: (routine: ApiRoutine) => void
   onDeleteRoutine: (routine: ApiRoutine) => void
   busy: boolean
@@ -365,12 +366,12 @@ type RoutineListProps = {
   focusId: string | null
 }
 
-function RoutineList({ routines, onEditRoutine, onToggleRoutine, onDeleteRoutine, busy, activation, activationError, changedId }: RoutineListProps) {
+function RoutineList({ routines, onOpenRoutine, onToggleRoutine, onDeleteRoutine, busy, activation, activationError, changedId }: RoutineListProps) {
   const sorted = useMemo(() => [...routines].sort((a, b) => a.title.localeCompare(b.title, 'es') || a.id.localeCompare(b.id)), [routines])
   return <div className="routine-management-list">{sorted.map(routine => <article key={routine.id} aria-busy={activation?.id === routine.id} className={'routine-management-row' + (!routine.active ? ' inactive' : '') + (changedId === routine.id ? ' routine-arrived' : '')} style={{ '--task-color': routine.color } as React.CSSProperties}>
     <i className="routine-color-marker" aria-hidden="true" />
     <div className="routine-row-main">
-      <button className="routine-row-edit" disabled={busy} aria-label={'Editar rutina ' + routine.title} onClick={() => onEditRoutine(routine)}><strong>{routine.title}</strong><RoutineStreaks routine={routine} /></button>
+      <button className="routine-row-edit" onClick={() => onOpenRoutine(routine.id)}><strong>{routine.title}</strong></button><RoutineStreaks routine={routine} />
       {routine.active && !routine.due_today && <span className="routine-availability">No prevista para hoy</span>}
       {activation?.id === routine.id && <span className="routine-row-status" role="status"><i className="routine-spinner" aria-hidden="true" />{activation.active ? 'Activando…' : 'Pausando…'}</span>}
       {activationError?.id === routine.id && <p className="routine-action-error" role="alert">{activationError.message}</p>}
@@ -408,10 +409,11 @@ function RoutinesView({ onBack, habits, userId, ...props }: RoutineListProps & {
   </section>
 }
 
-function TaskOverview({ habits, busy, onCompleteRoutine, onOpenRoutines, onOpenProjects, onNewTask, onNewRoutine, userId, today, ...props }: ProjectListProps & {
+function TaskOverview({ habits, busy, onCompleteRoutine, onOpenRoutine, onOpenRoutines, onOpenProjects, onNewTask, onNewRoutine, userId, today, ...props }: ProjectListProps & {
   habits: ReturnType<typeof useRoutineHabits>
   busy: boolean
   onCompleteRoutine: (routine: ApiRoutine) => void
+  onOpenRoutine: (id: string) => void
   onOpenProjects: () => void
   onOpenRoutines: () => void
   onNewTask: () => void
@@ -447,7 +449,7 @@ function TaskOverview({ habits, busy, onCompleteRoutine, onOpenRoutines, onOpenP
         </CollapsibleSection>
       </div>
       <CollapsibleSection title="Rutinas de hoy" className="routine" icon={<NavigationIcon type="routines" />} actions={<button className="overview-manage" onClick={onOpenRoutines} aria-label="Ver rutinas"><span>Ver rutinas</span><span aria-hidden="true">→</span></button>} count={routineCount ?? '—'} countLabel="Rutinas pendientes de hoy" expanded={expandedSections.has('routine')} onToggle={() => toggleSection('routine')} notice={!expandedSections.has('routine') && habits.error ? <RoutineLoadState habits={habits} /> : undefined}>
-        <DailyHabits habits={habits} busy={busy} onComplete={onCompleteRoutine} />
+        <DailyHabits habits={habits} busy={busy} onComplete={onCompleteRoutine} onOpen={onOpenRoutine} />
         {habits.ready && !habits.routines.length && <button className="new-project-button" disabled={busy} onClick={onNewRoutine}>＋ Crear mi primera rutina</button>}
       </CollapsibleSection>
     </div>
@@ -539,7 +541,8 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
   const [filter, setFilter] = useState('Todas')
   const [view, setView] = useState<'day' | 'week' | 'month'>('week')
   const [mobileTimeline, setMobileTimeline] = useState(false)
-  const [screen, setScreen] = useScreenRoute()
+  const [screen, setScreen, routineDetailId, openRoutineDetail, closeRoutineDetail] = useScreenRoute()
+  const routineDetail = routines.find(routine => routine.id === routineDetailId)
   const [loading, setLoading] = useState(true)
   const [calendarLoading, setCalendarLoading] = useState(false)
   const [slowConnection, setSlowConnection] = useState(false)
@@ -1061,11 +1064,18 @@ export function CalendarApp({ session, initialNotice }: { session: Session; init
             </div>
           })}</div>
         </section>}
-      </>) : screen === 'routines' ? (habits.ready ? <RoutinesView userId={session.user.id} habits={habits} activation={habits.activation} activationError={habits.activationError} changedId={habits.changedId} focusId={routineFocusId} routines={routines} onBack={() => setScreen('overview')} onEditRoutine={editRoutine} onToggleRoutine={toggleRoutine} onDeleteRoutine={deleteRoutine} busy={modalBusy} /> : <RoutineLoadState habits={habits} />)
+      </>) : screen === 'routines' ? (routineDetailId ? <div className="routine-detail-page">
+        <button className="back-to-overview" onClick={closeRoutineDetail}>← Volver</button>
+        {habits.ready && habits.error && <RoutineLoadState habits={habits} />}
+        {!habits.ready ? <RoutineLoadState habits={habits} /> : routineDetail ?
+          <RoutineDetail key={session.user.id + ':' + routineDetail.id} session={session} routine={routineDetail} today={habits.date} weekStart={firstDay} busy={modalBusy}
+            onEdit={() => editRoutine(routineDetail)} onComplete={() => void completeRoutine(routineDetail)} />
+          : <p role="status">Rutina no encontrada.</p>}
+      </div> : habits.ready ? <RoutinesView userId={session.user.id} habits={habits} activation={habits.activation} activationError={habits.activationError} changedId={habits.changedId} focusId={routineFocusId} routines={routines} onBack={() => setScreen('overview')} onOpenRoutine={openRoutineDetail} onToggleRoutine={toggleRoutine} onDeleteRoutine={deleteRoutine} busy={modalBusy} /> : <RoutineLoadState habits={habits} />)
         : (overviewLoading || !overviewLoaded || !initialDataLoaded) ? <div className="calendar-loading" role="status">{readError || error ? 'No se pudieron cargar las tareas.' : 'Cargando tareas…'}</div>
         : screen === 'projects' ? <ProjectsView onLinks={changeLinks} tasks={overviewTasks} projects={projects} features={features} featureActions={featureActions} onNewProjectTask={openNewProjectTask} onChangeProjectStatus={changeProjectStatus} projectBusy={modalBusy} categoryName={categoryName} onBack={() => setScreen('overview')} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
         : <>
-          <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewProjectTask={openNewProjectTask} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} features={features} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
+          <TaskOverview userId={session.user.id} today={today} onNewTask={() => openNew(today)} onNewProjectTask={openNewProjectTask} onNewRoutine={openNewRoutine} habits={habits} onCompleteRoutine={routine => void completeRoutine(routine)} busy={modalBusy} onOpenRoutine={openRoutineDetail} onOpenRoutines={() => setScreen('routines')} onOpenProjects={() => setScreen('projects')} tasks={overviewTasks} projects={projects} features={features} categoryName={categoryName} onNewProject={() => openProject()} onEditProject={openProject} onDeleteProject={deleteProject} onEdit={edit} onToggle={toggleDone} onDelete={deleteTask} />
           <ActivityHeatmap key={session.user.id} session={session} revision={activityRevision} />
         </>}
     </main>

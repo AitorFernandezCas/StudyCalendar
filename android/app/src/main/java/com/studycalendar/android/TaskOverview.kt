@@ -24,7 +24,7 @@ internal fun LazyListScope.taskOverview(
   tasks: List<Task>, projects: List<Project>, categories: List<Category>, routines: List<RoutineRecord>,
   today: LocalDate, habitDate: LocalDate, busy: Boolean, expanded: Set<String>, toggle: (String) -> Unit,
   edit: (Task) -> Unit, complete: (Task) -> Unit, delete: (Task) -> Unit, completeHabit: (RoutineRecord) -> Unit,
-  newTask: () -> Unit, newRoutine: () -> Unit, openProjects: () -> Unit, openRoutines: () -> Unit,
+  newTask: () -> Unit, newRoutine: () -> Unit, openProjects: () -> Unit, openRoutines: () -> Unit, openRoutine: (String) -> Unit,
   featureNames: Map<String, String> = emptyMap(),
 ) {
   val pending = Overview.pending(tasks, projects)
@@ -72,7 +72,7 @@ internal fun LazyListScope.taskOverview(
       val group = habits.filter { (habitDate in it.completedDates()) == done }
       if (group.isNotEmpty()) item("habits-$done") { Text("$label (${group.size})", style = MaterialTheme.typography.labelLarge) }
       items(group, key = { "habit-${it.row.id}" }) { record ->
-        RoutineCard(record, habitDate, busy, { completeHabit(record) }, {}, {}, {}, manage = false)
+        RoutineCard(record, habitDate, busy, { completeHabit(record) }, { openRoutine(record.row.id) }, {}, {}, {}, manage = false)
       }
     }
     if (habits.isEmpty()) item("habits-empty") {

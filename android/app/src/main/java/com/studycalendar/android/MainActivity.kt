@@ -207,6 +207,13 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
   var editingRoutine by remember { mutableStateOf<Routine?>(null) }
   var deletingRoutine by remember { mutableStateOf<Routine?>(null) }
   var routineForm by remember { mutableStateOf(false) }
+  var selectedRoutine by rememberSaveable { mutableStateOf<String?>(null) }
+  var selectedRoutineOwner by rememberSaveable { mutableStateOf<String?>(null) }
+  fun openRoutine(id: String) {
+    screenState.removeState("$owner/Rutinas/$id")
+    selectedRoutine = id
+    selectedRoutineOwner = owner
+  }
   val tasks = (if (cloud.session == null) rows else cloud.snapshot?.tasks).orEmpty().map(TaskRow::task)
   val projects = (if (cloud.session == null) projectRows else cloud.snapshot?.projects).orEmpty().map(ProjectRow::project)
   val features = (if (cloud.session == null) featureRows else cloud.snapshot?.features)?.map(ProjectFeatureRow::feature)
@@ -214,6 +221,10 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
   val featureNames = remember(features) { features.orEmpty().associate { it.id to it.name } }
   val categories = (if (cloud.session == null) categoryRows else cloud.snapshot?.categories).orEmpty().map(CategoryRow::category)
   val routines = if (cloud.session == null) localRoutines else cloud.snapshot?.routines
+  val routineDetailId = selectedRoutine.takeIf {
+    selectedRoutineOwner == owner && (screen == Destination.TASKS || screen == Destination.ROUTINES)
+  }
+  val routineDetail = routines?.find { it.row.id == routineDetailId }
   val project = projects.find { it.id == selectedProject }
   val groups = remember(project?.id, features, tasks) {
     if (project != null && features != null) Features.groups(project.id, features, tasks) else emptyList()
@@ -276,14 +287,21 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
     selectedProject = null
   }
   BackHandler(screen == Destination.PROJECTS && selectedProject != null) { projectBack() }
+  BackHandler(routineDetailId != null) { selectedRoutine = null }
 
   BackHandler(screen == Destination.SETTINGS) { screen = previousScreen }
   fun openSettings() { previousScreen = screen; screen = Destination.SETTINGS }
   Scaffold(snackbarHost = { SnackbarHost(snackbar) }, topBar = {
     Surface(color = MaterialTheme.colorScheme.surface) {
       Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (screen == Destination.SETTINGS || (screen == Destination.PROJECTS && project != null)) {
-          IconButton(onClick = { if (screen == Destination.SETTINGS) screen = previousScreen else projectBack() }) { Icon(appIcon("Atrás"), "Volver") }
+        if (screen == Destination.SETTINGS || (screen == Destination.PROJECTS && project != null) || routineDetailId != null) {
+          IconButton(onClick = {
+            when {
+              screen == Destination.SETTINGS -> screen = previousScreen
+              routineDetailId != null -> selectedRoutine = null
+              else -> projectBack()
+            }
+          }) { Icon(appIcon("Atrás"), "Volver") }
         }
         Text("StudyCalendar", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         if (screen != Destination.SETTINGS) {
@@ -302,11 +320,14 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
       }
     }
   }, bottomBar = {
-    AppNavigation(if (screen == Destination.SETTINGS) previousScreen else screen, pendingCount) { destination -> screen = destination }
+    AppNavigation(if (screen == Destination.SETTINGS) previousScreen else screen, pendingCount) { destination ->
+      selectedRoutine = null
+      screen = destination
+    }
   }, floatingActionButton = {
     val creatingFeature = screen == Destination.PROJECTS && project != null && features != null && group == null
     val inactiveTaskPlan = screen == Destination.PROJECTS && project != null && project.status != ProjectStatus.ACTIVE && !creatingFeature
-    if (screen != Destination.GOALS && loaded && !model.busy && (!cloud.working || cloud.session != null) && !model.readOnly && !inactiveTaskPlan) {
+    if (routineDetailId == null && screen != Destination.GOALS && loaded && !model.busy && (!cloud.working || cloud.session != null) && !model.readOnly && !inactiveTaskPlan) {
       val create = {
         when (screen) {
           Destination.SETTINGS -> { editingCategory = null; categoryForm = true }
@@ -335,14 +356,19 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
   }) { padding ->
     BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
     val calendarHeight = maxHeight
-    screenState.SaveableStateProvider(if (screen == Destination.PROJECTS) "${screen.name}/${selectedProject.orEmpty()}/${selectedGroup.orEmpty()}" else screen.name) {
+    val screenKey = when {
+      routineDetailId != null -> "$owner/Rutinas/$routineDetailId"
+      screen == Destination.PROJECTS -> "${screen.name}/${selectedProject.orEmpty()}/${selectedGroup.orEmpty()}"
+      else -> screen.name
+    }
+    screenState.SaveableStateProvider(screenKey) {
     val calendarList = rememberLazyListState()
     val calendarVisible = screen == Destination.CALENDAR && loaded
     val screenInsets = if (calendarVisible) 0.dp else 20.dp
     LazyColumn(state = calendarList, modifier = Modifier.fillMaxSize().padding(horizontal = screenInsets),
       verticalArrangement = Arrangement.spacedBy(12.dp),
       contentPadding = PaddingValues(bottom = if (calendarVisible) 76.dp else 100.dp, top = if (calendarVisible) 4.dp else 24.dp)) {
-      if (!calendarVisible) item {
+      if (!calendarVisible && routineDetailId == null) item {
         Text(if (screen == Destination.TASKS) "Todas las tareas" else screen.label, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold)
       }
       if (screen == Destination.SETTINGS) item { AccountPanel(cloud, pending, model::login, model::refresh, model::logout, model::resolve, initiallyExpanded = true) }
@@ -354,13 +380,21 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
       }
       if (!loaded) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(if (cloud.error != null) "No se pudieron cargar los datos." else "Cargando tus datos…") }
 
+      else if (routineDetailId != null) item {
+        if (routineDetail == null) Text("Rutina no encontrada.")
+        else RoutineDetail(routineDetail, habitDate, (cloud.snapshot?.calendar ?: model.localSettings).sunday,
+          model.busy || model.readOnly,
+          edit = { editingRoutine = routineDetail.row.routine(); routineForm = true },
+          complete = { completeHabit(routineDetail) })
+      }
       else when (screen) {
         Destination.GOALS -> item { GoalsScreen(model) }
         Destination.TASKS -> taskOverview(tasks, projects, categories, routines.orEmpty(), today, habitDate, model.busy || model.readOnly,
           expanded, toggleSection, editTask, completeTask, { deletingTask = it }, completeHabit,
           newTask = { newTask() },
           newRoutine = { editingRoutine = null; routineForm = true },
-          openProjects = { screen = Destination.PROJECTS }, openRoutines = { screen = Destination.ROUTINES }, featureNames = featureNames)
+          openProjects = { screen = Destination.PROJECTS }, openRoutines = { screen = Destination.ROUTINES },
+          openRoutine = ::openRoutine, featureNames = featureNames)
         Destination.CALENDAR -> {
           item {
             CalendarScreen(tasks, projects, categories, today, date, { selectedDate = it.toString() },
@@ -489,6 +523,7 @@ private fun CalendarContent(model: CalendarViewModel, openGoals: Boolean, consum
               val routine = record.row.routine()
               RoutineCard(record, today, (model.busy || model.readOnly),
                 complete = { completeHabit(record) },
+                open = { openRoutine(routine.id) },
                 edit = { editingRoutine = routine; routineForm = true },
                 activate = { model.execute { saveRoutine(routine.id, routine.title, routine.color, !routine.active, today) } },
                 delete = { deletingRoutine = routine })

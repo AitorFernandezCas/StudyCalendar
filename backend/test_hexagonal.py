@@ -2,7 +2,7 @@ import ast
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -556,6 +556,43 @@ def test_sdk_task_category_queries_conflicts_and_json_errors():
         assert client.patch("/api/tasks/missing", headers=HEADERS, json={"title": "T"}).status_code == 404
         assert client.post("/api/tasks", headers=HEADERS, json={"title": "T", "category_id": "missing"}).status_code == 400
         assert all(req.headers.get("Accept-Profile", req.headers.get("Content-Profile")) == "Task" for req in requests)
+
+
+def test_routine_history_reads_all_marks_and_preserves_completion_outside_period():
+    routine = "29d17f4b-3241-4588-bc56-e2c608a6dd20"
+    unavailable = "a05b30cf-adfb-4379-ba84-8e65d2c04768"
+    today = date(2026, 10, 5)
+    dates = [(today - timedelta(days=distance)).isoformat() for distance in range(1000, -1, -1)]
+    offsets = []
+
+    def respond(request):
+        table = request.url.path.split("/")[-1]
+        params = request.url.params
+        assert request.headers["Accept-Profile"] == "Task"
+        if table == "routine":
+            rows = [{"id": routine}] if params["id"] == f"eq.{routine}" else []
+            return httpx.Response(200, json=rows)
+        assert params["routine_id"] == f"eq.{routine}"
+        if table == "routine_period":
+            return httpx.Response(200, json=[{"id": "p", "routine_id": routine, "starts_on": dates[0], "ends_on": dates[-2]}])
+        assert table == "routine_completion"
+        assert params["completed"] == "eq.true"
+        assert params["occurrence_date"] == f"lte.{today.isoformat()}"
+        offset = int(params["offset"])
+        offsets.append(offset)
+        return httpx.Response(200, json=[{"occurrence_date": day} for day in dates[offset:offset + int(params["limit"])]])
+
+    with httpx.Client(transport=httpx.MockTransport(respond), trust_env=False) as transport:
+        database = SyncPostgrestClient("https://example.invalid/rest/v1", schema="Task", http_client=transport)
+        client = create_app(Settings(), Dependencies(FixedAuth(), DatabaseProvider(database), FixedClock(today))).test_client()
+        path = f"/api/routines/{routine}/history"
+        assert client.get(path).status_code == 401
+        assert client.get(f"/api/routines/{unavailable}/history", headers=HEADERS).status_code == 404
+        response = client.get(path, headers=HEADERS)
+        assert response.status_code == 200
+        assert response.json["periods"][0]["ends_on"] == dates[-2]
+        assert response.json["completed_dates"] == dates
+        assert offsets == [0, 500, 1000]
 
 
 def test_core_dependency_boundaries():

@@ -44,4 +44,29 @@ class CollectionsTest {
     assertEquals(Streak(1, 1), streaks(today, true, resumed.periods, setOf(today)))
     assertEquals(Streak(0, 0), streaks(today, true, resumed.periods, emptySet()))
   }
+
+  @Test fun `history separates missed and paused days and keeps a completion on the day of a pause`() {
+    val routine = Routine(title = "Leer", periods = listOf(ActivePeriod(today.minusDays(5))))
+      .activation(false, today.minusDays(2)).activation(true, today)
+    val dates = setOf(today.minusDays(2), today.plusDays(1))
+    val history = RoutineHistory(routine, today, dates)
+    assertEquals(today.minusDays(5), history.firstDay)
+    assertNull(history.status(today.minusDays(6)))
+    assertEquals(RoutineDayStatus.MISSED, history.status(today.minusDays(3)))
+    assertEquals(RoutineDayStatus.COMPLETE, history.status(today.minusDays(2)))
+    assertEquals(RoutineDayStatus.PAUSED, history.status(today.minusDays(1)))
+    assertEquals(RoutineDayStatus.PENDING, history.status(today))
+    assertEquals(RoutineDayStatus.COMPLETE, RoutineHistory(routine, today, dates + today).status(today))
+    assertNull(history.status(today.plusDays(1)))
+  }
+
+  @Test fun `last completed day falls back to the prior mark when today is unmarked`() {
+    val routine = Routine(title = "Leer", periods = listOf(ActivePeriod(today.minusDays(5))))
+    val previous = today.minusDays(2)
+    val future = today.plusDays(1)
+    val completed = setOf(previous, future)
+    assertEquals(today, RoutineHistory(routine, today, completed + today).lastCompletedDay)
+    assertEquals(previous, RoutineHistory(routine, today, completed).lastCompletedDay)
+    assertNull(RoutineHistory(routine, today, setOf(future)).lastCompletedDay)
+  }
 }
