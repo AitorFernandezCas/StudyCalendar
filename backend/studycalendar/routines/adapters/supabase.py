@@ -1,5 +1,5 @@
 from datetime import date
-from ..domain import Routine, RoutineSummary, Period
+from ..domain import Routine, RoutineSummary, RoutineHistory, Period
 
 ROUTINE_SELECT = "id,title,color,active,created_at,updated_at"
 PERIOD_SELECT = "id,routine_id,starts_on,ends_on"
@@ -15,6 +15,24 @@ class SupabaseRoutineRepository:
     def get(self, identifier: str) -> Routine | None:
         rows = self.table().select(ROUTINE_SELECT).eq("id", identifier).execute().data or []
         return Routine.from_record(rows[0]) if rows else None
+
+    def history(self, identifier: str, through: date) -> RoutineHistory:
+        def pages(query_factory):
+            offset = 0
+            while True:
+                rows = query_factory().range(offset, offset + 499).execute().data or []
+                yield from rows
+                if len(rows) < 500:
+                    break
+                offset += len(rows)
+
+        periods = pages(lambda: self.table("routine_period").select(PERIOD_SELECT)
+                        .eq("routine_id", identifier).order("starts_on").order("id"))
+        marks = pages(lambda: self.table("routine_completion").select("occurrence_date")
+                      .eq("routine_id", identifier).eq("completed", "true")
+                      .lte("occurrence_date", through.isoformat()).order("occurrence_date"))
+        return RoutineHistory([Period.from_record(row) for row in periods],
+                              [row["occurrence_date"] for row in marks])
 
     def create(self, payload: dict) -> Routine:
         return Routine.from_record(self.table().insert(payload).execute().data[0])

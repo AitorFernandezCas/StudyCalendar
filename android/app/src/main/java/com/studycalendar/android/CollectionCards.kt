@@ -1,6 +1,7 @@
 package com.studycalendar.android
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -94,7 +95,7 @@ fun ProjectCard(project: Project, tasks: List<Task>, busy: Boolean, open: (() ->
 }
 
 @Composable
-fun RoutineCard(record: RoutineRecord, today: LocalDate, busy: Boolean, complete: () -> Unit, edit: () -> Unit, activate: () -> Unit, delete: () -> Unit,
+fun RoutineCard(record: RoutineRecord, today: LocalDate, busy: Boolean, complete: () -> Unit, open: () -> Unit, edit: () -> Unit, activate: () -> Unit, delete: () -> Unit,
   manage: Boolean = true) {
   val routine = record.row.routine()
   val dates = record.completedDates()
@@ -106,7 +107,7 @@ fun RoutineCard(record: RoutineRecord, today: LocalDate, busy: Boolean, complete
         modifier = Modifier.semantics { contentDescription = "${if (today in dates) "Desmarcar" else "Completar"} ${routine.title} hoy" })
       else Box(Modifier.padding(16.dp)) { ColorMark(routine.color) }
       Column(Modifier.weight(1f).padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(routine.title, style = MaterialTheme.typography.titleSmall)
+        Text(routine.title, Modifier.clickable(onClickLabel = "Ver historial", onClick = open).padding(vertical = 4.dp), style = MaterialTheme.typography.titleSmall)
         Text("Racha actual: ${streak.current} días", style = MaterialTheme.typography.bodySmall)
         Text("Máxima: ${streak.maximum} días", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!routine.due(today)) Text(if (!routine.active) "En pausa" else "Empieza el ${Overview.relativeDate(routine.periods.lastOrNull()?.start, today)}", style = MaterialTheme.typography.bodySmall)

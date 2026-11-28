@@ -31,6 +31,12 @@ class Period(Model):
     ends_on: str | None = None
 
 
+@dataclass(frozen=True)
+class RoutineHistory:
+    periods: list[Period]
+    completed_dates: list[str]
+
+
 def routine_command(raw: Any, creating: bool = False) -> Command:
     body = Command.parse(raw, {"title", "color", "active", "starts_on"}).payload()
     if (creating or "title" in body) and (not isinstance(body.get("title"), str) or not body["title"].strip()):

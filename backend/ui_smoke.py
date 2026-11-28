@@ -20,7 +20,7 @@ from studycalendar.shared.domain import User, DuplicateName
 from studycalendar.tasks.domain import Task
 from studycalendar.categories.domain import Category
 from studycalendar.projects.domain import Project, ProjectFeature, ProjectFeatureLink
-from studycalendar.routines.domain import Routine, RoutineSummary, Period
+from studycalendar.routines.domain import Routine, RoutineSummary, RoutineHistory, Period
 from studycalendar.preferences.domain import Preferences
 
 
@@ -126,6 +126,13 @@ class Features(Repository):
 
 
 class Routines(Repository):
+    def history(self, identifier, through):
+        periods = [Period.from_record(dict(row)) for row in self.store.rows["periods"].values()
+                   if row["routine_id"] == identifier]
+        dates = [day for (key, day), completed in self.store.rows["completions"].items()
+                 if key == identifier and completed and day <= through.isoformat()]
+        return RoutineHistory(periods, dates)
+
     def get(self, identifier):
         row = self.rows.get(identifier)
         return Routine.from_record(dict(row)) if row else None

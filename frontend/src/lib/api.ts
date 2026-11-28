@@ -10,6 +10,10 @@ export type ApiFeatureLink = { _sync?: SyncBase; id: string; project_id: string;
 export type ApiTask = { _sync?: SyncBase; id: string; title: string; category_id: string | null; project_id: string | null; feature_id?: string | null; task_type: 'routine' | 'project' | 'daily'; date: string | null; start_time: string | null; end_time: string | null; prerequisite_ids?: string[]; all_day: boolean; color: string; completed: boolean }
 export type ApiRoutine = { _sync?: SyncBase; id: string; title: string; color: string; active: boolean; created_at: string; updated_at: string; due_today: boolean; completed_today: boolean; current_streak: number; max_streak: number }
 export type ApiRoutineSnapshot = { date: string; timezone: string; next_day_at: string; day_started_at: string; routines: ApiRoutine[] }
+export type ApiRoutineHistory = {
+  periods: { starts_on: string; ends_on: string | null }[]
+  completed_dates: string[]
+}
 export type ApiSettings = { _sync?: SyncBase; routine_reset_time: string; calendar_start_time: string; calendar_end_time: string; week_start: 'monday' | 'sunday'; timezone: string }
 export type SettingsChanges = Partial<Omit<ApiSettings, 'timezone' | '_sync'>>
 
@@ -76,6 +80,7 @@ export const featureLinksApi = {
 
 export const routinesApi = {
   list: (session: Session, signal?: AbortSignal) => request<ApiRoutineSnapshot>('/api/routines', session, { signal }),
+  history: (session: Session, id: string, signal?: AbortSignal) => request<ApiRoutineHistory>('/api/routines/' + encodeURIComponent(id) + '/history', session, { signal }),
   create: (session: Session, routine: { title: string; color: string; active: boolean; starts_on: string }) => request<ApiRoutine>('/api/routines', session, { method: 'POST', body: JSON.stringify(routine) }),
   update: (session: Session, id: string, routine: Partial<{ title: string; color: string; active: boolean }>, base?: SyncBase) => request<ApiRoutine>(`/api/routines/${id}`, session, { method: 'PATCH', body: JSON.stringify(routine) }, base),
   remove: (session: Session, id: string, base?: SyncBase) => request<{ deleted: string }>(`/api/routines/${id}`, session, { method: 'DELETE' }, base),
